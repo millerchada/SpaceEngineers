@@ -29,6 +29,18 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.7
+VALIDATED IN-GAME. The restored key made the whole bottleneck chain readable
+at a glance: Motor Blocked=257 BlockedBy=Electromagnet, Electromagnet
+Action=Queued Blocked=745 BlockedBy=CopperWire (exactly the partially-blocked
+Queued row 2.4.5 had hidden), CopperWire Queued=3,026 in flight.
+
+NOTE for reading these numbers: base stock CAN sit below the borrow floor.
+Observed Motor Stock=738 against a 750 floor with ToLoadoutTransfers=0 - the
+missing units were consumed outside IOPM (welding/manual use). The floor limits
+what IOPM will LEND to a loadout, not what the player can spend. A real leak
+would look like the number falling while a loadout is short AND
+ToLoadoutTransfers is climbing.
+
 Fixes a diagnostic regression introduced in 2.4.5. BlockedBy is now emitted
 whenever it is set, not only when Action is one of the fully-blocked states.
 
