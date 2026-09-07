@@ -28,6 +28,29 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.11
+The seeded template is grouped by the SAME 9 warehouse categories used
+everywhere else in the script (Ores/Ingots/Components/Ammo/Tools/Consumables/
+Seeds/Misc), emitted in CATS order, instead of a hand-rolled TypeId chain that
+dumped tools, consumables and bottles into one "Other" heap. Roughly 120
+entries now arrive under the same headings you already read on the status
+panel.
+
+New CategoryForRaw() applies the same precedence as CategoryForItem but from a
+raw "TypeId/SubtypeId" string - subtype override first (Grain->Consumables,
+SpaceCredit->Misc), then the broad TypeId map - so a static table entry with no
+live MyItemType still classifies correctly. This REPLACED a five-branch
+StartsWith chain, so the grouping logic got smaller, not larger.
+
+WHY NOT JUST MIRROR THE PB'S [Stock] LIST: [Stock] is what IOPM MANUFACTURES
+(25 recipes). A loadout is what a ship CARRIES, and they barely intersect. Of
+118 item types observed on the live base, the loadout-relevant ones are mostly
+NOT manufactured: MealPack_KelpCrisp (2,059), NATO_25x184mm (1,228), Ice
+(1.86M), welders/grinders/drills, Medkit/Powerkit/RadiationKit, Hydrogen and
+Oxygen bottles. Mirroring [Stock] is what 2.4.6 did, and it is exactly why a
+greenhouse container never listed its own Ice. Production knowledge, base stock
+targets and loadout item identity are three separate domains - keep them so.
+
 ## 2.4.10
 The seeded template also lists every item type observed in the BASE, not just
 in the container being seeded.
