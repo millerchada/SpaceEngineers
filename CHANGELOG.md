@@ -29,6 +29,17 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.7
+QUOTA MODIFIERS COMPLETE (except All). "Motor=100L" removed the container's
+excess and added nothing: base Motor 744 -> 1,201, LoadoutShortages=0. That was
+the first remote->base loadout transfer, so PushExcess is now exercised too.
+
+Over-commit recovery confirmed at the same time, and it is worth understanding
+because it looks wrong: 2,262 CopperWire stayed queued for Motors the base no
+longer needed, while CopperWire reported 5,105/5,000 Satisfied with
+JobsAdded=0. IOPM never cancels a queued job - AddQueueItem is the only queue
+mutation - so it over-commits when demand vanishes mid-flight and recovers by
+simply not queueing more until stock drains. Expected, not a runaway.
+
 VALIDATED IN-GAME. The restored key made the whole bottleneck chain readable
 at a glance: Motor Blocked=257 BlockedBy=Electromagnet, Electromagnet
 Action=Queued Blocked=745 BlockedBy=CopperWire (exactly the partially-blocked

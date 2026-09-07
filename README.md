@@ -90,6 +90,36 @@ limit; do not re-collapse the phases.
 - Refinery management is out of scope: outputs are evacuated, queues and inputs
   are never touched.
 
+## Docking / loadout UAT status
+
+Confirmed on a live multiplayer server, large base, v2.4.5 - v2.4.7.
+
+| Behaviour | Status | Evidence |
+|---|---|---|
+| Loadout container discovery | PASS | LoadoutContainers=1 on a docked grid |
+| GOAT bounded-section parse | PASS | hand-written `Ice=1000` honoured |
+| Item resolution, observed-subtype fallback | PASS | `Ice` resolves via base inventory, not a table |
+| Template seeding into EMPTY Custom Data | PASS | 25-line `0M` template, byte-exact |
+| Existing Custom Data never altered | PASS | populated container left untouched |
+| Unlisted items never swept | PASS | 1,000 Ice survived a components-only template |
+| Exact quota fill | PASS | filled to exactly 1,000, stopped |
+| `M` minimum (never removes) | PASS | 500M kept container contents |
+| `L` maximum (removes, never adds) | PASS | excess returned to base, nothing added |
+| Remote->base push (`PushExcess`) | PASS | base Motor 744 -> 1,201 |
+| Remote inventory excluded from base stock | PASS | base read 921/750 while ship held Motors |
+| Borrow formula + hard floor | PASS | stopped dead at 750 = 1000 x (1-25/100) |
+| Natural replenishment (no faked demand) | PASS | Need=57 = 1000-921-22 |
+| Recursive expansion arithmetic | PASS | 79 Motors -> +79 LargeSteelTube, +237 Electromagnet |
+| Shortage is diagnostic-only, no new root | PASS | Short=1 WaitingFor=Motor, zero jobs added |
+| Over-commit recovery (queues are sacred) | PASS | CopperWire 5,105/5,000 + 2,262 queued, JobsAdded=0 |
+| `All` modifier | NOT TESTED | |
+| Recursive manual-queue protection vs loadout | NOT TESTED | needs a manual queue competing for the same input |
+| Multiple docked ships sharing the budget | NOT TESTED | 5 constructs docked but only 1 loadout container |
+| `[No Sorting]` / `[No GOAT]` connector tags | NOT TESTED | |
+| Undock state cleanliness | NOT TESTED | |
+
+Peak instructions with loadout work active: ~19,400 of 50,000, phase `DockScan`.
+
 ## Traps discovered the hard way
 
 Each of these cost real time or resources. Details in CHANGELOG.md.
