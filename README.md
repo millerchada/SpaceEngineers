@@ -109,9 +109,15 @@ Each of these cost real time or resources. Details in CHANGELOG.md.
   last value forever and reads as current.
 - **In-game compile error line numbers** refer to the `.min.cs` plus the PB's
   own ~32-line generated preamble. Map them through the artifact.
-- **LCDs showing "Online" after you fly away and back** is Space Engineers'
-  surface render streaming, not a script fault. The text is still in the panel
-  buffer; only the rendered texture is stale until the next write.
+- **LCDs taking ~90s to appear when you walk back into range is a Space
+  Engineers engine behaviour, NOT a script fault.** PROVEN by controlled test:
+  a plain unscripted LCD with hand-typed static text, placed beside two IOPM
+  panels, reappeared at the same moment as both of them. The text is in the
+  panel buffer the whole time (open the LCD text editor and it is there); only
+  the rendered surface is stale. DO NOT try to fix this with a faster repaint
+  loop - it cannot help, and it costs per-second network churn. The script's
+  own render cadence tops out at one paint per logical cycle (~UpdateSeconds),
+  which cannot produce a 90-second delay.
 
 ## Configuration
 

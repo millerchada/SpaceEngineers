@@ -83,11 +83,20 @@ NOT A BUG, recorded so it isn't re-investigated: LCD panels showing "Online"
 after you fly out of range and back is Space Engineers' own surface render
 streaming, not a script fault. The text stays in the panel buffer the whole
 time (open the LCD's text editor and it is there); only the rendered texture
-is stale, until the next WriteText repaints it. Because IOPM renders once per
-logical cycle in the final phases, worst case is one cycle (~UpdateSeconds).
-Caching the built text and re-writing it every tick would cut that to ~0.17s
-at the cost of a per-tick WriteText; deliberately not done while source size
-is over budget.
+is stale.
+
+PROVEN by controlled test (2.4.5 era): a plain UNSCRIPTED LCD with hand-typed
+static text was placed beside two IOPM panels. All three reappeared at the same
+moment, ~90 seconds after coming back into range. Nothing in a PB script can
+influence this. A cached-text repaint loop was designed and then DISCARDED on
+this evidence - it would have added source, instructions and per-second network
+churn for zero benefit. Do not propose it again.
+
+Separately, the script's data cadence IS tunable: rendering happens in the last
+two phases of a 13-phase cycle, gated by [General] UpdateSeconds. Because the
+architecture runs exactly one phase per Update10 tick, lowering UpdateSeconds
+does NOT raise peak instructions per invocation - it only runs cycles closer
+together. UpdateSeconds=2 makes the ~2.2s cycle itself the limiter.
 
 ## 2.4.3
 PB-whitelist compile fix + live-verified item identities. No logic, phase,
