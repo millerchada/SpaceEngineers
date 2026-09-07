@@ -28,6 +28,23 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.9
+The seeded template now lists EVERY item IOPM can resolve by name, so the
+player picks from a full menu instead of a curated subset: recipe aliases, the
+loadout alias table, and whatever the container holds. ~62 entries, grouped
+Components / Ingots / Ammo / Ores / Other, each still at "0M".
+
+Deduped by RESOLVED RAW TYPE, one line per real item, with an IOPM alias
+beating a loadout-table name for the same item - so "SensorCluster" is listed
+and "Detector" is not, "Glass" and not "BulletproofGlass". Without that dedup
+the same physical item would appear twice under different names and two quota
+lines would fight over it.
+
+GROUP TITLES ARE PARSER-SENSITIVE. IsMetaSection skips any heading containing
+Container/Setting/Modifier/Explanation/Pinned/Note. Components, Ingots, Ammo,
+Ores and Other are all verified clear. NEVER title a group anything containing
+"Container" - the entire group would be silently ignored.
+
 ## 2.4.8
 The seeded template now lists the 25 managed components PLUS whatever the
 container already holds, so ores, ammo and modded items appear instead of only
@@ -45,10 +62,10 @@ Pinned/Note, so the parser still reads the entries). Everything still seeds at
 Uses a LOCAL item list rather than a shared scratch buffer: this runs inside
 DockDiscover and must not alias a buffer another pass is holding.
 
-MILESTONE / OPERATIONAL NOTE: source is now 100,733 characters, i.e. LARGER
-THAN THE PB CEILING. The .cs can no longer be pasted into a programmable block
-at all. build_pb.py is no longer an optimisation, it is mandatory - the
-artifact is 82,926 with 17,074 of headroom. Never try to deploy the source.
+MILESTONE / OPERATIONAL NOTE: source has passed the PB ceiling (100,733 at
+2.4.8, 102,079 at 2.4.9). The .cs can no longer be pasted into a programmable
+block at all. build_pb.py is no longer an optimisation, it is mandatory.
+Never try to deploy the source.
 
 ## 2.4.7
 QUOTA MODIFIERS COMPLETE (except All). "Motor=100L" removed the container's
