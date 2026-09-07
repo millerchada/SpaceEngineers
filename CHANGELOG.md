@@ -29,6 +29,14 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.5
+VALIDATED IN-GAME. First version deployed as a build_pb.py artifact rather
+than raw source: the stripped .min.cs compiled and runs, so comment and
+indentation stripping is proven safe and ~16,000 characters of headroom are
+permanent. PeakInstructions 18,792 - identical to 2.4.4, confirming the strip
+has no runtime effect. Every Satisfied row now reports BlockedBy= blank and
+the five legacy IOPM.Organization keys are gone, confirming both the MyIni
+diagnosis and the always-emit-the-key fix.
+
 Display only. No logic, phase, planning or docking change.
 - New `FK()` formatter for the stock table: values >=10,000 collapse to floored
   k (129,775 -> "129k", 218,205.4 -> "218k"), >=1,000,000 to floored M. ALWAYS

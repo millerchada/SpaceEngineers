@@ -33,14 +33,13 @@ Only the **live working set** sits at the repo root. Superseded versions move to
 `archive/`, where they stay readable but out of the way.
 
 ```
-IO_Production_Manager_v2.4.4.cs      deployed in-game
-IO_Production_Manager_v2.4.5.cs      candidate - not yet validated in-game
+IO_Production_Manager_v2.4.5.cs      deployed in-game (validated)
 IO_Blueprint_Sniffer_v1.0.3.cs       current
 IO_Item_Identity_Dump_v1.0.0.cs      current
 Endless_Drill_Mk1_Basic_v1_0_0.cs    separate script (not an IOPM version)
 Endless_Drill_Mk1_Headless_v0_8_15.cs
 build_pb.py / README.md / CHANGELOG.md
-archive/production_manager/          v1.0.11 - v2.4.3
+archive/production_manager/          v1.0.11 - v2.4.4
 archive/blueprint_sniffer/           v1.0.0 - v1.0.2
 ```
 
