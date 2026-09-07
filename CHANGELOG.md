@@ -29,6 +29,11 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.6
+VALIDATED IN-GAME: emptying a remote [Stock] container's Custom Data produced
+the 25-line template byte-for-byte on the next scan, and the container's
+existing 1,000 Ice was left untouched - unlisted items are never swept, since
+ServiceLoadouts only iterates the quota table.
+
 Seeds a starting quota template into a [Stock] loadout container whose Custom
 Data is EMPTY, so quotas can be filled in on the block instead of typed from
 scratch. New [Docking] SeedLoadoutTemplate=true (default on).
