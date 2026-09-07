@@ -34,6 +34,7 @@ Only the **live working set** sits at the repo root. Superseded versions move to
 
 ```
 IO_Production_Manager_v2.4.5.cs      deployed in-game (validated)
+IO_Production_Manager_v2.4.6.cs      candidate - loadout template seeding
 IO_Blueprint_Sniffer_v1.0.3.cs       current
 IO_Item_Identity_Dump_v1.0.0.cs      current
 Endless_Drill_Mk1_Basic_v1_0_0.cs    separate script (not an IOPM version)

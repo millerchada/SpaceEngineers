@@ -28,6 +28,36 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.6
+Seeds a starting quota template into a [Stock] loadout container whose Custom
+Data is EMPTY, so quotas can be filled in on the block instead of typed from
+scratch. New [Docking] SeedLoadoutTemplate=true (default on).
+
+Guarded by string.IsNullOrWhiteSpace(b.CustomData): anything already present -
+GOAT's own section, or the player's - is never read past, never altered, never
+appended to. This is the same rule the PB's own WriteDefaultCustomData follows.
+Written in GOAT's bounded format so the existing parser reads it back and GOAT
+interop is preserved for free. New diagnostic key: LoadoutsSeeded.
+
+THE "0M" IN THE TEMPLATE IS LOAD-BEARING - DO NOT "SIMPLIFY" IT TO 0.
+A bare "Item=0" is an EXACT quota, and ServiceLoadouts reads that as "remove
+everything above 0":
+
+    if (have > q.Amt + 0.0001 && q.Mod != 'M') PushExcess(...)
+
+Seeding bare zeros would therefore STRIP a docked container of every item the
+template lists - on a greenhouse, it would drain the Ice. "0M" (minimum 0) is
+inert in both directions: never adds, because stock is never below 0, and never
+removes, because the push branch skips M. The template does nothing whatsoever
+until a real quantity is edited in.
+
+LOADOUT PATH VALIDATED IN-GAME (2.4.5): a hand-written "Ice=1000" block in a
+remote [Stock] container filled it to exactly 1,000 and stopped. That exercised
+the layer-C fallback resolver (Ice is neither a managed recipe nor in the
+hardcoded alias table, so it could only resolve by matching an observed
+SubtypeId in base inventory - the mechanism modded items rely on), zero-target
+generic accounting, and base->remote transfer with base stock unaffected.
+
 ## 2.4.5
 VALIDATED IN-GAME. First version deployed as a build_pb.py artifact rather
 than raw source: the stripped .min.cs compiled and runs, so comment and
