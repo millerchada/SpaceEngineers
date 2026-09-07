@@ -28,6 +28,27 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.7
+Fixes a diagnostic regression introduced in 2.4.5. BlockedBy is now emitted
+whenever it is set, not only when Action is one of the fully-blocked states.
+
+2.4.5 gated the write on IsBlockedAction(r.Action), which excludes "Queued".
+But a Queued row can be PARTIALLY ingredient-limited - Action=Queued with
+Blocked=45 - and that is exactly when you need to know which ingredient is the
+limiter. The gate was a workaround for stale values; that root cause is now
+properly fixed by always emitting the key, so the gate bought nothing and cost
+real information. Observed live: Motor showed Blocked=45 with BlockedBy blank
+during the loadout-borrow UAT.
+
+BORROW CHAIN VALIDATED IN-GAME (2.4.6): a Motor quota on a docked [Stock]
+container moved ~79 Motors out of the base. Base stock fell 1,000 -> 921 with
+the 750 floor intact, remote inventory stayed out of base accounting, and the
+planner saw Need=57 (1000 - 921 - 22 queued) and began replenishing. The
+recursive expansion is arithmetically exact: 79 Motors in flight raised the
+LargeSteelTube target by 79 (1 per Motor) and the Electromagnet target by 237
+(3 per Motor), with ingot support reserved underneath. Sections I, H and J of
+the docking spec are now confirmed on live data.
+
 ## 2.4.6
 VALIDATED IN-GAME: emptying a remote [Stock] container's Custom Data produced
 the 25-line template byte-for-byte on the next scan, and the container's
