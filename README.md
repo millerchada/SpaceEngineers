@@ -25,7 +25,10 @@ the output is stable under a second pass. It hard-errors on `@"..."` verbatim
 strings and `/* */` blocks, the two constructs the transform cannot handle
 safely.
 
-v2.4.5: source 97,955 -> artifact 81,750 chars (18,250 headroom).
+v2.4.8: source 100,733 -> artifact 82,926 chars (17,074 headroom).
+
+The source is now LARGER than the 100,000-character PB ceiling, so it cannot be
+pasted into a block at all. The build step is mandatory, not an optimisation.
 
 ## Layout
 
@@ -34,6 +37,7 @@ Only the **live working set** sits at the repo root. Superseded versions move to
 
 ```
 IO_Production_Manager_v2.4.7.cs      deployed in-game (validated)
+IO_Production_Manager_v2.4.8.cs      candidate - template lists container contents
 IO_Blueprint_Sniffer_v1.0.3.cs       current
 IO_Item_Identity_Dump_v1.0.0.cs      current
 Endless_Drill_Mk1_Basic_v1_0_0.cs    separate script (not an IOPM version)

@@ -28,6 +28,28 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.8
+The seeded template now lists the 25 managed components PLUS whatever the
+container already holds, so ores, ammo and modded items appear instead of only
+recipe items. Reported case: a greenhouse [Stock] container holding Ice got a
+components-only template, so the Ice it actually carried was never listed.
+
+An observed item is named by its IOPM alias when it has one, otherwise by its
+bare SubtypeId - which resolves through the observed-subtype path proven with
+Ice. Process resources (Heat) are excluded; they must never enter a quota
+table. Heading changed "Components" -> "Items" (verified against
+IsMetaSection: "Items" matches none of Container/Setting/Modifier/Explanation/
+Pinned/Note, so the parser still reads the entries). Everything still seeds at
+"0M" - see the 2.4.6 warning about why that is load-bearing.
+
+Uses a LOCAL item list rather than a shared scratch buffer: this runs inside
+DockDiscover and must not alias a buffer another pass is holding.
+
+MILESTONE / OPERATIONAL NOTE: source is now 100,733 characters, i.e. LARGER
+THAN THE PB CEILING. The .cs can no longer be pasted into a programmable block
+at all. build_pb.py is no longer an optimisation, it is mandatory - the
+artifact is 82,926 with 17,074 of headroom. Never try to deploy the source.
+
 ## 2.4.7
 QUOTA MODIFIERS COMPLETE (except All). "Motor=100L" removed the container's
 excess and added nothing: base Motor 744 -> 1,201, LoadoutShortages=0. That was
