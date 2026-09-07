@@ -27,13 +27,34 @@ safely.
 
 v2.4.5: source 97,955 -> artifact 81,750 chars (18,250 headroom).
 
+## Layout
+
+Only the **live working set** sits at the repo root. Superseded versions move to
+`archive/`, where they stay readable but out of the way.
+
+```
+IO_Production_Manager_v2.4.4.cs      deployed in-game
+IO_Production_Manager_v2.4.5.cs      candidate - not yet validated in-game
+IO_Blueprint_Sniffer_v1.0.3.cs       current
+IO_Item_Identity_Dump_v1.0.0.cs      current
+Endless_Drill_Mk1_Basic_v1_0_0.cs    separate script (not an IOPM version)
+Endless_Drill_Mk1_Headless_v0_8_15.cs
+build_pb.py / README.md / CHANGELOG.md
+archive/production_manager/          v1.0.11 - v2.4.3
+archive/blueprint_sniffer/           v1.0.0 - v1.0.2
+```
+
+The deployed version and the candidate are both kept at root so there is always
+an immediate rollback target. Once a candidate is confirmed working in-game, the
+version it replaced moves to `archive/`.
+
 ## Versioning convention
 
 Each version is an **immutable file**. A new version is a copy plus a delta;
 released files are never edited in place. This exists so a regression can be
 isolated to a specific delta, and it has repeatedly paid off — see CHANGELOG.md.
-
-Current: `IO_Production_Manager_v2.4.5.cs`. Deployed and running in-game.
+Archived versions were moved with `git mv`, so `git log --follow` still works
+across the move.
 
 Supporting tools:
 - `IO_Blueprint_Sniffer_v1.0.3.cs` — discovers blueprint definition IDs from
