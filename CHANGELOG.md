@@ -28,6 +28,21 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.10
+The seeded template also lists every item type observed in the BASE, not just
+in the container being seeded.
+
+WHY 2.4.9 WAS WRONG: a container is seeded exactly when its Custom Data is
+empty, which is usually also when it holds nothing - so observing only the
+container listed almost nothing beyond the static tables. Reported case: a
+greenhouse [Stock] container produced no Ores group at all, because the
+greenhouse had consumed its Ice before the seed ran. The base inventory is the
+real "what exists in this world" vocabulary, and it is what makes ORES and
+MODDED items reachable from the menu.
+
+Cost is paid only on a seed, which requires empty Custom Data and so happens
+about once per container ever - not per cycle.
+
 ## 2.4.9
 The seeded template now lists EVERY item IOPM can resolve by name, so the
 player picks from a full menu instead of a curated subset: recipe aliases, the
