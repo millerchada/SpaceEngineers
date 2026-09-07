@@ -1,0 +1,18 @@
+# Deployment artifacts produced by build_pb.py.
+# Regenerate with:  python build_pb.py IO_Production_Manager_vX.Y.Z.cs
+# build_pb.py is deterministic and committed, so any artifact can be rebuilt
+# byte-for-byte from its source. Tracking them would add ~82KB of churn per
+# rebuild for no information gain. If you ever need to prove exactly what was
+# pasted into a PB during an incident, comment this line out.
+*.min.cs
+
+# Python
+__pycache__/
+*.pyc
+
+# Editors / OS
+.vs/
+.vscode/
+*.swp
+Thumbs.db
+desktop.ini
