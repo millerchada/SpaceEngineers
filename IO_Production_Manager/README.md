@@ -12,11 +12,11 @@ The `.cs` is **source**. It is now larger than the PB's own 100,000-character
 ceiling, so it cannot be pasted into a block at all. Build the artifact:
 
 ```bash
-python ../build_pb.py IO_Production_Manager_v2.4.19.cs
-# -> IO_Production_Manager_v2.4.19.min.cs   <-- paste THIS into the block
+python ../build_pb.py IO_Production_Manager_v2.4.20.cs
+# -> IO_Production_Manager_v2.4.20.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.19: source 113,006 -> artifact 88,795 chars (11,205 headroom).
+v2.4.20: source 113,696 -> artifact 88,887 chars (11,113 headroom).
 
 Comments and indentation cost ~20,000 characters and mean nothing at runtime,
 but stripping them from the source would destroy the documentation that keeps
@@ -37,6 +37,10 @@ Put these in a block's **name**. Matching is case-insensitive substring.
 | `Overflow` | Spill-over pool. Exclusive — combining it with a category is ignored with a warning. |
 | `[Ignore]` `[IOPM-Ignore]` `[Locked]` `!GSIM-Locked` | Container untouched entirely. |
 | `[No Sorting]` `!GSIM-NoSorting` | Container untouched (same as above, for GOAT compatibility). |
+
+A local **connector** is treated as transit cargo and emptied into the
+warehouse — except an **ejector** (`ThrowOut` enabled), which is left alone
+since throwing material away is the point of the block.
 
 ### Screens
 

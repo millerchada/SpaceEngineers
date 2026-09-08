@@ -28,6 +28,28 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.20
+A local connector with ThrowOut enabled - an EJECTOR - is no longer treated as
+transit cargo to recover.
+
+An Ejector is an IMyShipConnector, so the "clean up local connector inventory"
+behaviour from 2.4.1 tried to rescue its contents into the warehouse. That
+fights the block's entire purpose, and because an ejector is usually
+conveyor-isolated every attempt fails. Observed live: one "Base Ejector" holding
+Stone produced 8 failed transfers and 9 warnings PER CYCLE, each costing a
+TryTransferItem binary search, and drowning out real warnings. Overflow reported
+"full/unreachable" while showing 0% fill, which is the signature of an
+unreachable source rather than a full destination.
+
+ThrowOut is the right test rather than a block subtype: it is exactly the
+setting that says the player wants this material gone. The ejector remains a
+dock anchor; only inventory routing is skipped. Wrapped in try/catch in case
+ThrowOut is not available on every connector variant.
+
+NEEDS IN-GAME CONFIRMATION that IMyShipConnector.ThrowOut is whitelisted. If it
+is not, the guaranteed workaround is naming the block "[Ignore]", which takes it
+out of routing via LOCK_TAGS.
+
 ## 2.4.19
 Fixes stack FRAGMENTATION in alphabetical organization, reported in-game as
 "duplicates of items in the components container".
