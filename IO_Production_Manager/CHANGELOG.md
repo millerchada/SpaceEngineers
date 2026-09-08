@@ -45,11 +45,13 @@ correct to one decimal place. A bonus check landed at the same time: Glass fell
 3 while Lightbulb rose 470 -> 500, and Lightbulb has a x10 output yield needing
 1 Glass per job - 30 bulbs = 3 jobs = 3 Glass, so non-unity yields are right too.
 
-Partial evidence on undock: LoadoutContainers went 2 -> 1 while
-ConnectedConstructs stayed 9, and base Motor moved 750 -> 780 - UP, not down by
-the departed loadout's contents. Remote inventory never counted toward base
-stock, so losing it changed nothing. Not a clean undock test, since the
-construct count did not move.
+NOT an undock test - corrected. LoadoutContainers went 2 -> 1 because a [Stock]
+container was REMOVED, not because a ship undocked; ConnectedConstructs stayed
+at 9 throughout. What it does show is that dock state drops a removed loadout
+container cleanly, and that the borrow accounting is symmetric: base Motor moved
+750 -> 780, and 30 is exactly what had been lent to that container. Removing the
+block spills its contents into the conveyor network, and IOPM routed the
+borrowed Motors back to base. Undock cleanliness itself remains untested.
 
 DOCKING UAT ESSENTIALLY COMPLETE. Two final tests passed on live data:
 
