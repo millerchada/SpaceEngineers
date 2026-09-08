@@ -28,6 +28,42 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.12
+SIX NEW RECIPES, managed set 25 -> 31. Transcribed from live in-game blueprint
+tooltips (Industrial Overhaul v1.7.7), not guessed:
+
+  Superconductor    Wire Drawer     Rubber 3, GoldWire 15
+  GravityGenerator  Nano-Assembler  TantalumIngot 5, GoldWire 30, CobaltIngot 25,
+                                    SilverIngot 20, Electromagnet 15
+  Thrust            Nano-Assembler  Electromagnet 6, CobaltIngot 10, GoldWire 3,
+                                    PlatinumIngot 0.5
+  QuantumComputer   Nano-Assembler  TantalumIngot 0.1, PlatinumIngot 0.2,
+                                    GoldWire 6, AdvancedComputer 2, AluminumPlate 2
+  ElectronMatrix    Nano-Assembler  ArmorGlass 1, TantalumIngot 0.5, LaserEmitter 1,
+                                    GoldWire 2, Polymer 2
+  FSSolarCell       Nano-Assembler  ArmorGlass 1, TantalumIngot 0.2, GoldWire 1,
+                                    SiliconWafer 5, Plastic 3, TitaniumIngot 0.5
+
+New ItemDefs: TantalumIngot=Tantalum, PlatinumIngot=Platinum (both dump-confirmed)
+and 8 components. Machine tokens only RANK candidates - eligibility is decided by
+pb.CanUseBlueprint() - so an approximate machine name still works.
+
+OUTPUT SUBTYPES: Superconductor, GravityGenerator, Thrust and LaserEmitter are
+CONFIRMED against a live Item Identity Dump. ArmorGlass, ElectronMatrix,
+FSSolarCell and QuantumComputer are NOT - none is physically present on the base,
+so their Component/<Name> subtype is an assumption of exactly the kind that caused
+the 129k glass over-production.
+
+WHY THAT IS STILL SAFE TO SHIP: a new recipe auto-populates [Stock] at 0, and none
+of these four is an ingredient of anything else, so there is no support demand and
+NOTHING is produced until a target is set by hand. Before setting a nonzero target
+for any of those four: craft one manually, run the Item Identity Dump, confirm the
+real SubtypeId. The failure signature is Stock stuck at 0 while production runs.
+
+ElectronMatrix and FSSolarCell additionally need ArmorGlass and LaserEmitter, which
+have no recipes yet, so they will report RawShortage until those are added or the
+ingredients are stocked by hand. Honest and fail-safe, not a bug.
+
 ## 2.4.11
 The seeded template is grouped by the SAME 9 warehouse categories used
 everywhere else in the script (Ores/Ingots/Components/Ammo/Tools/Consumables/
