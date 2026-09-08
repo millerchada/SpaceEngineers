@@ -36,14 +36,14 @@ Only the **live working set** sits at the repo root. Superseded versions move to
 `archive/`, where they stay readable but out of the way.
 
 ```
-IO_Production_Manager_v2.4.7.cs      deployed in-game (validated)
+IO_Production_Manager_v2.4.9.cs      deployed in-game (validated)
 IO_Production_Manager_v2.4.12.cs     candidate - 6 new recipes (31 managed)
 IO_Blueprint_Sniffer_v1.0.3.cs       current
 IO_Item_Identity_Dump_v1.0.0.cs      current
 Endless_Drill_Mk1_Basic_v1_0_0.cs    separate script (not an IOPM version)
 Endless_Drill_Mk1_Headless_v0_8_15.cs
 build_pb.py / README.md / CHANGELOG.md
-archive/production_manager/          v1.0.11 - v2.4.6
+archive/production_manager/          v1.0.11 - v2.4.8, v2.4.10 - v2.4.11
 archive/blueprint_sniffer/           v1.0.0 - v1.0.2
 ```
 
@@ -72,7 +72,7 @@ Supporting tools:
 |---|---|
 | PB source ceiling | 100,000 characters |
 | Runtime instructions | 50,000 **per invocation** |
-| Observed peak (v2.4.6) | ~19,000, phase `DockScan` |
+| Observed peak (v2.4.9) | ~19,400, phase `DockScan` |
 
 The script runs a **cooperative multi-tick phase architecture** — exactly one
 phase per `Update10` tick. A single monolithic cycle exceeded the instruction
