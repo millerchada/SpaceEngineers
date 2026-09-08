@@ -28,6 +28,34 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.15
+Tag vocabulary and PB screen, driven by real operational feedback.
+
+1. DOCKING-T FIX. A [No Sorting] tag on a LOCAL connector used to suppress that
+connector's OWN inventory as well, because [No Sorting] sits in IGNORE_TAGS.
+Local connector inventory is now gated on LOCK_TAGS instead, so [No Sorting]
+there means only "do not pull from whatever docks here". That enables the
+intended pattern: a docking T with one tagged and one plain connector, so the
+pilot chooses whether the ship gets unloaded by where it parks - while transit
+cargo dropped in either connector is still cleaned into the warehouse.
+[No Sorting] keeps its original meaning on local CARGO CONTAINERS.
+
+2. [Ignore] is now accepted anywhere [IOPM-Ignore] is (IGNORE_TAGS, EXCL_TAGS,
+LOCK_TAGS). Note "[IOPM-Ignore]" does not contain "[Ignore]" as a substring, so
+both strings must be listed.
+
+3. The stock DISPLAY tag moved off the word "Stock": [IOPM-Inventory] or the
+short [Inventory]. "[Stock]" alone means a LOADOUT CONTAINER, and having the
+display share that word was needless confusion. [IOPM-Stock] is still accepted
+so existing panels keep working - it never actually collided, since
+"[IOPM-Stock]" does not contain "[Stock]".
+
+4. The PB's own screen gets its own COMPACT panel (BuildPbText) instead of the
+wall-panel text, which just truncated mid-line on a surface that small. One
+short line per fact: version, state, sort/prod flags, stock ready/total, dock
+and loadout counts, cycle time, peak instructions, warning count. It is written
+every cycle, never conditionally - see the 2.4.14 note on why.
+
 ## 2.4.14
 The PB's own surface is now ALWAYS a status target, not merely a fallback.
 
