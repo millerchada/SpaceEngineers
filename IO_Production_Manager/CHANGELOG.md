@@ -29,6 +29,26 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.22
+DOCKING UAT ESSENTIALLY COMPLETE. Two final tests passed on live data:
+
+MULTIPLE LOADOUT CONTAINERS / NO DOUBLE-SPEND - the last untested safety
+property. Two [Stock] containers each demanding Motor=500 (combined 1,000)
+against ~30 units of available headroom parked base Motor at EXACTLY 750, which
+is 1000 x (1 - 25/100). Neither breached the floor: _dockSpent stopped them
+spending the same headroom twice. LoadoutShortages=2 with both reporting
+WaitingFor=Motor.
+
+ITEM SUBTYPES ALL VERIFIED - ArmorGlass 10, SuperMagnet 1, TokamakBlanket 1 all
+credited, so those last three ItemDefs were correct. EVERY ONE of the 37 managed
+recipes now has a verified output subtype; no assumed identity remains anywhere
+in the registry, which closes the class of bug that cost 129k glass.
+
+The recipes verified themselves incidentally: Cryocooler 20 -> 19 (SuperMagnet
+needs exactly 1) and Ceramic 2,873 -> 2,871 (TokamakBlanket needs exactly 2).
+
+Still untested and deliberately low priority: the All quota modifier, the
+[No GOAT] connector tag, and undock state cleanliness.
+
 VALIDATED IN-GAME: UnloadSources 160 -> 156, exactly the four waste chutes
 leaving the source list, and Warnings settled at 0 for real rather than by
 backoff suppression. Organization resumed with Examined=34, Succeeded=2,

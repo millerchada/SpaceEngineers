@@ -199,7 +199,7 @@ limit; do not re-collapse the phases.
 
 ## Docking / loadout UAT status
 
-Confirmed on a live multiplayer server, large base, v2.4.5 - v2.4.15.
+Confirmed on a live multiplayer server, large base, v2.4.5 - v2.4.22.
 
 | Behaviour | Status | Evidence |
 |---|---|---|
@@ -219,10 +219,11 @@ Confirmed on a live multiplayer server, large base, v2.4.5 - v2.4.15.
 | Recursive expansion arithmetic | PASS | 79 Motors -> +79 LargeSteelTube, +237 Electromagnet |
 | Shortage is diagnostic-only, no new root | PASS | Short=1 WaitingFor=Motor, zero jobs added |
 | Over-commit recovery (queues are sacred) | PASS | CopperWire 5,105/5,000 + 2,262 queued, JobsAdded=0 |
-| `All` modifier | NOT TESTED | |
-| Recursive manual-queue protection vs loadout | NOT TESTED | needs a manual queue competing for the same input |
-| Multiple docked ships sharing the budget | NOT TESTED | 5 constructs docked but only 1 loadout container |
-| `[No Sorting]` / `[No GOAT]` connector tags | NOT TESTED | |
+| `All` modifier | NOT TESTED | lowest value; least likely modifier to be used |
+| Recursive manual-queue protection vs loadout | PASS | 1,096 manually queued Superconductors derived 16,440 GoldWire / 3,288 Rubber / 11,892.6 GoldIngot exactly |
+| Multiple loadout containers, no double-spend | PASS | two containers each wanting 500 Motors parked the base at exactly 750, both short |
+| `[No Sorting]` connector tag | PASS | UnloadSources dropped while the construct stayed counted and its `[Stock]` container kept being serviced |
+| `[No GOAT]` connector tag | NOT TESTED | would show as `ConnectedConstructs` dropping by one |
 | Undock state cleanliness | NOT TESTED | |
 
 Peak instructions with loadout work active: ~19,400 of 50,000, phase `DockScan`.
