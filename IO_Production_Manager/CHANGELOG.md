@@ -28,6 +28,43 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.16
+FOUR NEW RECIPES from live in-game tooltips. Managed set 31 -> 35.
+
+  ArmorGlass      Ceramics Furnace   AluminumIngot 3, PotassiumNitrate 1
+  Reactor         Advanced Assembler TitaniumPlate 1, Concrete 3, Carbon 3,
+                                     SilverIngot 5, Plastic 10
+  SuperMagnet     Advanced Assembler TantalumIngot 1, TitaniumIngot 2,
+                                     GoldWire 2, Cryocooler 1
+  TokamakBlanket  Advanced Assembler Ceramic 2, LithiumPaste 2, ArmoredPlate 1,
+                                     CopperIngot 2, Thermocouple 1
+
+ArmorGlass completes the ElectronMatrix and FSSolarCell chains, which had been
+sitting at RawShortage on it since 2.4.12.
+
+New ItemDefs: PotassiumNitrate = Ingot/Niter (this is what the game calls
+"Potassium Nitrate"; named for the display name, not the raw subtype, because
+Friendly() splits camelCase and the player reads it in [Stock] and loadout
+menus). Plus Reactor, SuperMagnet, TokamakBlanket as outputs and Concrete,
+Cryocooler, ArmoredPlate as ingredients. Verified that every ingredient across
+all 35 recipes resolves to an ItemDef.
+
+The blueprint named "Superconducting Electromagnet" yields an ITEM called
+"Superconducting Magnet", which the knowledge catalog calls SuperMagnet - three
+different names for one thing, so do not "correct" any of them.
+
+SUBTYPES: Reactor, Concrete, Cryocooler and ArmoredPlate are dump-confirmed.
+SuperMagnet and TokamakBlanket are NOT - neither exists on the base yet, so
+craft one and run the Item Identity Dump before setting a nonzero target.
+
+INGREDIENT CEILINGS worth knowing before setting targets - these are not
+manufacturable by IOPM and were near-empty on the live base:
+  AluminumIngot ~18   (3 per ArmorGlass - refining is out of scope)
+  Cryocooler    ~30   (1 per SuperMagnet, and it has no recipe yet)
+  LaserEmitter   ~2   (1 per ElectronMatrix, and it has no recipe yet)
+Targets on the items that consume these will report RawShortage rather than
+produce, which is honest and fail-safe.
+
 ## 2.4.15
 VALIDATED IN-GAME. The 2.4.13 DockDiscover rework delivered: PeakInstructions
 36,056 -> 10,297 with the same 9 connected constructs and 116 unload sources -
