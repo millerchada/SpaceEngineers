@@ -28,6 +28,30 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.13
+PERFORMANCE ONLY, no behaviour change. DockDiscover walked every block once per
+docked construct - O(constructs x blocks) - and `all` is the WHOLE
+GridTerminalSystem, every block on the base and on every docked grid. On a live
+multiplayer base with 9 connected constructs that put PeakInstructions at
+36,056 of 50,000, and it grew with both base size and other players' traffic.
+
+Now ONE pass, with construct membership cached per GRID by EntityId.
+IsSameConstructAs is a grid-level property, so every block on a grid resolves
+identically - answering it once per grid instead of once per block per construct
+gives O(blocks + grids x constructs). Roughly 9 x 1000 construct comparisons
+became ~20 x 9.
+
+Deliberately NOT done by slicing constructs across ticks: that would have
+deferred servicing and made the fix visible in behaviour. This keeps every
+construct scanned every cycle.
+
+CONTEXT worth keeping: this base uses CONNECTORS to split itself into subgrids
+deliberately, to avoid one sprawling grid lagging the server. So the "docked
+constructs" are mostly the base's own extensions and mine network, not visiting
+ships - which is why [No GOAT] tagging was NOT an acceptable mitigation and the
+cost had to be fixed structurally. On a multiplayer server the docked count is
+not under our control at all.
+
 ## 2.4.12
 SIX NEW RECIPES, managed set 25 -> 31. Transcribed from live in-game blueprint
 tooltips (Industrial Overhaul v1.7.7), not guessed:
@@ -47,6 +71,20 @@ tooltips (Industrial Overhaul v1.7.7), not guessed:
 New ItemDefs: TantalumIngot=Tantalum, PlatinumIngot=Platinum (both dump-confirmed)
 and 8 components. Machine tokens only RANK candidates - eligibility is decided by
 pb.CanUseBlueprint() - so an approximate machine name still works.
+
+SUBTYPES CONFIRMED IN-GAME after deploy: QuantumComputer credited Stock=564,
+GravityGenerator 31, Thrust 3,427, Superconductor 40 - so Component/<Name> was
+right for all of them. Still unverified: ElectronMatrix, FSSolarCell, ArmorGlass
+(none exists on the base yet).
+
+RECURSIVE MANUAL-QUEUE SUPPORT VALIDATED on live data by accident. A manual
+queue of 1,096 Superconductors was invisible before 2.4.12 taught IOPM the
+recipe; once visible, the planner derived every layer exactly:
+    GoldWire  1,096 x 15  = 16,440   reported 16,440
+    Rubber    1,096 x 3   =  3,288   reported  3,288
+    GoldIngot 19,821 x 0.6 = 11,892.6 reported 11,892.6
+That drained GoldWire to 1 and blocked AdvancedComputer - correct behaviour
+supporting a queue IOPM may never cancel, not a runaway.
 
 OUTPUT SUBTYPES: Superconductor, GravityGenerator, Thrust and LaserEmitter are
 CONFIRMED against a live Item Identity Dump. ArmorGlass, ElectronMatrix,
