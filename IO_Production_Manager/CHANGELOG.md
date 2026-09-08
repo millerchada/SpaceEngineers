@@ -29,6 +29,21 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.16
+OVERFLOW DRAIN-BACK VALIDATED on live data. With Ores and Ingots both at 100%
+and Overflow absorbing the spill at 42.8%, adding containers (Ores 17->18,
+Ingots 5->7) took Overflow to 0% and both warnings cleared. Material spilled
+correctly under pressure and returned correctly once room existed - no manual
+intervention.
+
+WHAT SCALES WHAT, now that DockScan is fixed and Sorting is the peak phase:
+  Sorting   grows with CONTAINER COUNT (and pending Organization work).
+            Measured 10,747 -> 15,248 -> 16,842 across 32 -> 35 containers.
+            Roughly linear, so ~2x containers implies ~2x this phase. Bounded
+            in practice because Organization only gets leftover transfer budget.
+  DockScan  since 2.4.13, independent of docked construct count.
+Sorting therefore grows with the base you build, not with other players'
+traffic - predictable, unlike the pre-2.4.13 DockScan behaviour.
+
 VALIDATED IN-GAME. StockItems settled at 35 with plan records for all four new
 items. Reactor credited Stock=78, confirming Component/Reactor. PeakInstructions
 10,747-15,248 with PeakPhase back to Sorting - DockScan has dropped out of the

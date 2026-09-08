@@ -140,7 +140,11 @@ about:
 |---|---|
 | PB source ceiling | 100,000 characters |
 | Runtime instructions | 50,000 **per invocation** |
-| Observed peak (v2.4.16) | 10,747-15,248, phase `Sorting` (9 constructs, 116 unload sources) |
+| Observed peak (v2.4.16) | 16,842, phase `Sorting` (35 containers, 9 docked constructs) |
+
+`Sorting` grows with **container count**; `DockScan` is independent of docked
+construct count since v2.4.13. So the peak tracks the base you build, not other
+players' traffic.
 
 The script runs a **cooperative multi-tick phase architecture** — exactly one
 phase per `Update10` tick. A single monolithic cycle exceeded the instruction
