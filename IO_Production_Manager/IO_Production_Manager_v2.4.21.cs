@@ -91,11 +91,12 @@ HashSet<IMyInventory> _ignInv = new HashSet<IMyInventory>();
 // SRC_BACKOFF cycles instead of every cycle. Failing to route costs no transfer budget, but it
 // does cost a TryTransferItem binary search PER DESTINATION - so two remote drills re-probed
 // all 18 Ores containers plus Overflow every cycle and produced 37 warnings, drowning out real
-// ones. The cause there was NOT an unreachable path: the game's own conveyor system was moving
-// the ore away between IOPM reading the item and transferring it, so IOPM kept losing a race
-// for material that was being drained perfectly well without it. If something else is already
-// emptying a source, stay out of the way. Keyed on the inventory, survives across cycles,
-// cleared in Discover only when it grows unbounded (ships come and go).
+// ones. The cause there was a DAMAGED CONVEYOR JUNCTION on the drill - the warnings were a
+// correct fault report, not noise, and found the damage before the player did. So this
+// RATE-LIMITS rather than silences: retrying every 6th cycle keeps the warning visible while
+// cutting the cost and the flood ~6x. Clears the moment a source succeeds, so a repair
+// recovers on its own. Keyed on the inventory, survives across cycles, cleared in Discover
+// only when it grows unbounded (ships come and go).
 Dictionary<IMyInventory, int> _srcBackoff = new Dictionary<IMyInventory, int>();
 const int SRC_BACKOFF = 6;
 List<IMyTextSurface> _statScr = new List<IMyTextSurface>();

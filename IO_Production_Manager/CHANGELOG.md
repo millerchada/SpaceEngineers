@@ -37,26 +37,29 @@ it costs a TryTransferItem binary search PER DESTINATION. Observed live: two
 remote drills on a docked ship re-probed all 18 Ores containers plus Overflow
 every single cycle, producing 37 warnings and drowning out real ones.
 
-ROOT CAUSE, corrected after the reporter pointed out the Stone was in fact
-flowing fine: this was NOT an unreachable conveyor path. It was a RACE. A
-MyInventoryItem is a snapshot; IOPM read the drill's contents, chose an item and
-amount, and the game's own conveyor system moved that Stone away before IOPM's
-TransferItemTo executed - so the transfer failed on a stale item reference. The
-drills were being drained normally the whole time; IOPM was competing with the
-conveyor system for the same Stone and losing, every cycle.
+ROOT CAUSE, CONFIRMED: a DAMAGED CONVEYOR JUNCTION on the drill. There really
+was no path from that block to base storage. (An intermediate theory that this
+was a race against the game's own conveyor system - IOPM holding a stale
+MyInventoryItem snapshot - was wrong for this incident. That failure mode is
+possible in principle, but it is not what happened here.)
 
-BEWARE THE WARNING WORDING. "Transfer failed ... trying next container" fires
-when CanItemsBeAdded said YES and the transfer still failed. The code comment
-reads that as an unreachable destination, which is too narrow - it also covers
-losing a race for the source item. Do not conclude "no conveyor path" from this
-message alone; check whether the material is actually moving.
+THE WARNINGS WERE NOT NOISE - THEY WERE A CORRECT FAULT REPORT. This pattern is
+a reliable indicator of broken conveyor infrastructure on the source grid:
 
-The backoff is the right response either way, and better justified by the race
-than by unreachability: if the game is already draining a source, IOPM should
-stay out of the way rather than re-probing every destination to lose the same
-race again. It also covers a genuinely full warehouse. It clears the moment a
-source succeeds, so recovery needs no intervention. Keyed on the inventory and
-cleared wholesale past 256 entries, since docked ships come and go.
+    CanItemsBeAdded says YES, the transfer fails anyway, to EVERY destination
+    in the category AND to an Overflow container showing 0% fill
+
+A genuinely full warehouse cannot produce that, because an empty Overflow would
+accept the item. When you see it, go look for a damaged or disconnected block on
+the source grid. IOPM found a damaged junction here before the player noticed it.
+
+That is why the backoff RATE-LIMITS rather than silences: retrying every 6th
+cycle still surfaces the warning periodically, so a real fault stays visible,
+while the re-probing cost and the flood both drop about 6x. Suppressing it
+entirely would have thrown away a working diagnostic. The backoff also covers a
+genuinely full warehouse, and clears the moment a source succeeds - so repairing
+the junction recovers within 6 cycles with no intervention. Keyed on the
+inventory, cleared wholesale past 256 entries since docked ships come and go.
 
 This is the third instance of the same shape this session: the ejector, the
 loadout quota re-parse, and now this. IOPM had no memory of work that failed or
