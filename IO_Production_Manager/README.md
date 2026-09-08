@@ -323,6 +323,39 @@ matching a real category are silently ignored, so check the resolved set that
 gets echoed back as `[IOPM.Organization] Skipped=` rather than trusting what
 you typed.
 
+## What `Stalled=0` means — read before "fixing" stall detection
+
+`[IOPM.Machines] Stalled` has read 0 for the entire life of this script. That
+is expected, not a gap in coverage.
+
+**The game already handles the common case.** A production block that cannot
+complete the item at the head of its queue skips to the next item it *can*
+build, provided it can pull the resources. When the missing resource arrives
+it comes back to the skipped item on its own. IOPM never needs to intervene,
+which is also why blocked ingredients get returned to the warehouse rather
+than left sitting in machine inputs.
+
+So a queue entry that is not advancing is usually NOT a stall. It is either
+later in the queue than something the machine is currently building (machines
+build one item at a time) or skipped because a resource is briefly absent.
+Live example: `GoldWire Queued=1,500` sat unchanged across two dumps with
+`GoldIngot` stock byte-identical, while `Superconductor` advanced 776 -> 823.
+Both are made in the Wire Drawer; the wire jobs simply had not been reached.
+
+**Detection is per machine, not per queue item.** `IsProducing` resets the
+stall counter, so a machine busy on one item accrues no stall cycles however
+long another queued item waits. That is deliberate: per-item stall tracking
+would fire constantly on the skip behaviour above, and the remedy
+(`EvacuateMachineInput`) would be wrong for it.
+
+What stall recovery genuinely exists for is the case the skip behaviour cannot
+escape: a machine with a queue, `IsProducing` false, and an input inventory
+holding material it cannot use, unable to pull the right ingredients because
+the input is full. Evacuating the input is the correct and only remedy there.
+
+Rare trigger, correct design. Do not "improve" detection toward per-item
+tracking without first re-reading this section.
+
 ## Configuration
 
 All configuration lives in the programmable block's **Custom Data**. Sections
