@@ -12,11 +12,11 @@ The `.cs` is **source**. It is now larger than the PB's own 100,000-character
 ceiling, so it cannot be pasted into a block at all. Build the artifact:
 
 ```bash
-python ../build_pb.py IO_Production_Manager_v2.4.17.cs
-# -> IO_Production_Manager_v2.4.17.min.cs   <-- paste THIS into the block
+python ../build_pb.py IO_Production_Manager_v2.4.18.cs
+# -> IO_Production_Manager_v2.4.18.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.17: source 109,554 -> artifact 87,221 chars (12,779 headroom).
+v2.4.18: source 111,368 -> artifact 87,897 chars (12,103 headroom).
 
 Comments and indentation cost ~20,000 characters and mean nothing at runtime,
 but stripping them from the source would destroy the documentation that keeps

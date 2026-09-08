@@ -28,6 +28,32 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.18
+PERFORMANCE ONLY. Adding a SECOND loadout container took PeakInstructions from
+16,842 to 27,334 and moved the peak back to DockScan - about 10,000 per
+container. Two separate costs, both introduced by making the seeded template a
+full ~120-entry menu in 2.4.9-2.4.11:
+
+1. ParseGoatStock re-parsed every container's Custom Data EVERY cycle, and each
+   entry not found in a lookup table falls through to ObservedType(), which does
+   a GetItems() per inventory. ~50 ore/tool/consumable entries x 35+ base
+   inventories, per container, per cycle. Now the parsed quota table is cached
+   against the Custom Data string it came from and only re-parsed when that
+   string changes. This is the "do not repeatedly reparse unchanged Custom Data"
+   rule from the original design constraints, which the full menu had broken.
+
+2. ServiceLoadouts called InvAmount per quota entry - another GetItems() each,
+   ~120 per container per cycle. The container is now snapshotted once into
+   _loHave, making it O(items + entries).
+
+CONSEQUENCE of the cache: a quota line that fails to resolve stays unresolved
+until the container's Custom Data changes - which is what you would edit anyway
+to fix a typo. The cache is keyed on block EntityId and cleared wholesale past
+64 entries, since ships come and go.
+
+_loHave reuses _itemsB, which is otherwise only used by BalancePools in the
+Sorting phase - a different tick, so no buffer aliasing.
+
 ## 2.4.17
 LaserEmitter and Cryocooler recipes, from live tooltips. Managed set 35 -> 37.
 
