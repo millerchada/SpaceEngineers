@@ -28,6 +28,23 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.22
+REMOTE ejectors are now skipped as unload sources. 2.4.20 fixed only LOCAL
+connectors, in Discover; remote blocks on a docked construct go through
+DockDiscover, which had its own unload-source check with no ThrowOut test. So
+IOPM kept trying to pull material back out of ejectors on docked ships.
+
+Found because 4 of 5 identically-named connectors on an orbital miner turned out
+to be sorter-fed waste chutes. IOPM was fighting the ship's own waste handling,
+which is what the Stone warnings had been reporting all along - and the shared
+name is why they looked like one block failing repeatedly rather than four
+different blocks.
+
+NOTE FOR MAINTAINERS: connector handling exists in TWO places - Discover for
+local connectors and DockDiscover for remote ones. A rule about connectors has
+to be applied in both. 2.4.20 patched one and missed the other, and the symptom
+survived two more versions before the cause surfaced.
+
 ## 2.4.21
 VALIDATED IN-GAME: Warnings 27 -> 0 on the second cycle after deploy, with
 ToBaseTransfers=3 confirming legitimate unloading was not blocked. The first

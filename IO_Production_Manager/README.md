@@ -12,11 +12,11 @@ The `.cs` is **source**. It is now larger than the PB's own 100,000-character
 ceiling, so it cannot be pasted into a block at all. Build the artifact:
 
 ```bash
-python ../build_pb.py IO_Production_Manager_v2.4.21.cs
-# -> IO_Production_Manager_v2.4.21.min.cs   <-- paste THIS into the block
+python ../build_pb.py IO_Production_Manager_v2.4.22.cs
+# -> IO_Production_Manager_v2.4.22.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.21: source 115,042 -> artifact 89,349 chars (10,651 headroom).
+v2.4.22: source 116,066 -> artifact 89,490 chars (10,510 headroom).
 
 Comments and indentation cost ~20,000 characters and mean nothing at runtime,
 but stripping them from the source would destroy the documentation that keeps
@@ -82,7 +82,7 @@ into a name. There is no "Ejector" tag; there is an ejector *setting*.
 
 | Block / setting | Behaviour |
 |---|---|
-| **Ejector** — any connector with `ThrowOut` **on** | **Left alone.** Its contents are never recovered into the warehouse. Throwing material away is the point of the block, and rescuing it fights that. Still usable as a dock anchor. |
+| **Ejector** — any connector with `ThrowOut` **on** | **Left alone**, locally *and* on a docked ship. Its contents are never recovered into the warehouse. Throwing material away is the point of the block, and rescuing it fights that — on a docked ship these are commonly sorter-fed waste chutes. Still usable as a dock anchor. |
 | **Connector** with `ThrowOut` off | Treated as transit cargo: contents are routed into the warehouse, and count as local on-hand stock while they wait. Never a balancing destination. |
 | **Cargo container** | The only block type that can be a warehouse destination. |
 | **Refinery** | Output inventory is evacuated. Its queue and inputs are **never** touched — refinery management is out of scope. |
