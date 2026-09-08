@@ -246,6 +246,13 @@ Each of these cost real time or resources. Details in CHANGELOG.md.
   last value forever and reads as current.
 - **In-game compile error line numbers** refer to the `.min.cs` plus the PB's
   own ~32-line generated preamble. Map them through the artifact.
+- **"Transfer failed … trying next container" does not mean the destination is
+  unreachable.** It fires whenever `CanItemsBeAdded` said yes and the transfer
+  still failed — which also happens when the game's own conveyor system moves
+  the item away first, leaving IOPM holding a stale `MyInventoryItem` snapshot.
+  Seen live as 37 warnings a cycle from drills that were being drained normally
+  the whole time. Check whether the material is actually moving before
+  concluding anything about conveyors.
 - **LCDs taking ~90s to appear when you walk back into range is a Space
   Engineers engine behaviour, NOT a script fault.** PROVEN by controlled test:
   a plain unscripted LCD with hand-typed static text, placed beside two IOPM

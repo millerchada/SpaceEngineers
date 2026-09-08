@@ -87,13 +87,15 @@ List<CI> _cons = new List<CI>();
 Dictionary<IMyInventory, CI> _invCon = new Dictionary<IMyInventory, CI>();
 List<IMyInventory> _plainInv = new List<IMyInventory>();
 HashSet<IMyInventory> _ignInv = new HashSet<IMyInventory>();
-// UNREACHABLE-SOURCE BACKOFF. A source whose items all fail to move is retried only every
+// STUCK-SOURCE BACKOFF. A source whose items all fail to move is retried only every
 // SRC_BACKOFF cycles instead of every cycle. Failing to route costs no transfer budget, but it
-// does cost a TryTransferItem binary search PER DESTINATION - so one conveyor-isolated drill
-// re-probed all 18 Ores containers plus Overflow every cycle and produced 19 warnings a cycle,
-// drowning out real ones. Observed live from remote drills on a docked ship with no conveyor
-// path to base storage. Keyed on the inventory, survives across cycles, cleared in Discover
-// only when it grows unbounded (ships come and go).
+// does cost a TryTransferItem binary search PER DESTINATION - so two remote drills re-probed
+// all 18 Ores containers plus Overflow every cycle and produced 37 warnings, drowning out real
+// ones. The cause there was NOT an unreachable path: the game's own conveyor system was moving
+// the ore away between IOPM reading the item and transferring it, so IOPM kept losing a race
+// for material that was being drained perfectly well without it. If something else is already
+// emptying a source, stay out of the way. Keyed on the inventory, survives across cycles,
+// cleared in Discover only when it grows unbounded (ships come and go).
 Dictionary<IMyInventory, int> _srcBackoff = new Dictionary<IMyInventory, int>();
 const int SRC_BACKOFF = 6;
 List<IMyTextSurface> _statScr = new List<IMyTextSurface>();

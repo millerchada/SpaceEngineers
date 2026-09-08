@@ -34,21 +34,29 @@ now retried once every 6 cycles instead of every cycle.
 
 Failing to route costs no transfer budget - tb only decrements on success - but
 it costs a TryTransferItem binary search PER DESTINATION. Observed live: two
-remote drills on a docked ship with no conveyor path to base storage re-probed
-all 18 Ores containers plus Overflow every single cycle, producing 37 warnings
-and drowning out real ones.
+remote drills on a docked ship re-probed all 18 Ores containers plus Overflow
+every single cycle, producing 37 warnings and drowning out real ones.
 
-HOW TO READ THAT WARNING: "Transfer failed ... trying next container" only fires
-when capacity said YES and the transfer still failed - meaning no conveyor path,
-NOT a full destination. The giveaway in the same report was Overflow described as
-"full/unreachable" while showing 0% fill. A genuinely full warehouse produces a
-different message.
+ROOT CAUSE, corrected after the reporter pointed out the Stone was in fact
+flowing fine: this was NOT an unreachable conveyor path. It was a RACE. A
+MyInventoryItem is a snapshot; IOPM read the drill's contents, chose an item and
+amount, and the game's own conveyor system moved that Stone away before IOPM's
+TransferItemTo executed - so the transfer failed on a stale item reference. The
+drills were being drained normally the whole time; IOPM was competing with the
+conveyor system for the same Stone and losing, every cycle.
 
-The backoff covers both cases anyway, since re-probing a full warehouse every
-cycle is equally pointless. It clears the moment a source succeeds again, so a
-conveyor being repaired or space freeing up recovers within 6 cycles without
-intervention. Keyed on the inventory and cleared wholesale past 256 entries,
-since docked ships come and go.
+BEWARE THE WARNING WORDING. "Transfer failed ... trying next container" fires
+when CanItemsBeAdded said YES and the transfer still failed. The code comment
+reads that as an unreachable destination, which is too narrow - it also covers
+losing a race for the source item. Do not conclude "no conveyor path" from this
+message alone; check whether the material is actually moving.
+
+The backoff is the right response either way, and better justified by the race
+than by unreachability: if the game is already draining a source, IOPM should
+stay out of the way rather than re-probing every destination to lose the same
+race again. It also covers a genuinely full warehouse. It clears the moment a
+source succeeds, so recovery needs no intervention. Keyed on the inventory and
+cleared wholesale past 256 entries, since docked ships come and go.
 
 This is the third instance of the same shape this session: the ejector, the
 loadout quota re-parse, and now this. IOPM had no memory of work that failed or
