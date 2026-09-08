@@ -28,6 +28,42 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.19
+Fixes stack FRAGMENTATION in alphabetical organization, reported in-game as
+"duplicates of items in the components container".
+
+ROOT CAUSE: the positional move must pass stackIfPossible:FALSE -
+
+    ci.Inventory.TransferItemTo(ci.Inventory, sourceIndex, mismatchAt, false, amount)
+
+- because that is the only way to land an item at an exact slot; with true the
+game merges it wherever it likes and the sort cannot position anything. The
+side effect is that an item arriving where its own type already sits becomes a
+SEPARATE stack. Containers therefore fragment into several stacks of one item
+over time. Nothing is lost or double-counted - Stock figures sum GetItems()
+server-side and stay correct however many stacks the total is spread over - but
+it looks like duplicated items, and it stops the ordering ever converging
+(OutOfOrder never reached 0 across any live snapshot: 2, 4, 7, 2...).
+
+FIX: before any positional move, if one item type occupies more than one slot,
+merge those two stacks with stackIfPossible:TRUE and spend the container's one
+action per cycle on that. Once no type is split, the sort has a fixed point to
+reach. Diagnostics report it as "merge <Item>" in LastAttempt and MERGE in the
+cycle log.
+
+NEEDS IN-GAME CONFIRMATION: same-inventory merging via TransferItemTo with a
+target index is not clearly documented. If the merge silently no-ops, the
+symptom is _orgFailed climbing with OutOfOrder still never reaching 0 - in
+which case turn organization off rather than letting it churn.
+
+New [Sorting] Organize=true (default on). Set false to disable slot ordering
+entirely; it is purely cosmetic, runs last, and only ever spends leftover
+transfer budget.
+
+A phantom stack that survives nothing - present in the terminal but not really
+there - is more likely client display desync than fragmentation. Reconnecting
+clears a desync; a real split stack survives.
+
 ## 2.4.18
 PERFORMANCE ONLY. Adding a SECOND loadout container took PeakInstructions from
 16,842 to 27,334 and moved the peak back to DockScan - about 10,000 per
