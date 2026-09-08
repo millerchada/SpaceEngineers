@@ -50,6 +50,34 @@ NEEDS IN-GAME CONFIRMATION that IMyShipConnector.ThrowOut is whitelisted. If it
 is not, the guaranteed workaround is naming the block "[Ignore]", which takes it
 out of routing via LOCK_TAGS.
 
+DEFERRED FEATURE - EJECTOR MANAGEMENT. The original intent was for IOPM to drive
+ejectors: keep a small buffer of Stone/Gravel and dump the excess so the
+warehouse is not overrun. Deliberately NOT built. Ignoring ejectors is the
+settled behaviour for now.
+
+If it is ever picked up, the design worked out was: IOPM PUSHES excess into a
+tagged ejector whose ThrowOut the player leaves permanently on - no block-state
+writes, no cycling anything on and off, just a transfer decision, bounded by the
+existing budget at the lowest priority. Config would be a CEILING, the inverse
+of [Stock]'s floor:
+
+    [Dump]
+    Enabled=true
+    Stone=50000
+    Gravel=20000
+
+with hard rails: only items explicitly listed are ever dumped, never below the
+keep amount, only into tagged ejectors. This is the ONLY thing IOPM would ever
+do that destroys material permanently, so it needs those rails and it needs
+deliberate sign-off, not inference.
+
+Open questions never answered: the real SubtypeIds for Stone and Gravel (the
+live warning showed Stone classified as Ingots, so Ingot/Stone rather than the
+vanilla Ore/Stone; Gravel unknown), the keep amounts, the tag name, and above
+all whether a tagged ejector is even conveyor-reachable FROM the warehouse -
+the observed one was isolated, which is why every rescue attempt failed. If it
+is unreachable the push model cannot work at all.
+
 ## 2.4.19
 Fixes stack FRAGMENTATION in alphabetical organization, reported in-game as
 "duplicates of items in the components container".
