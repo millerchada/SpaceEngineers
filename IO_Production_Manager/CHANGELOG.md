@@ -28,6 +28,35 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.23
+CATEGORY OVERRIDES NOW MATCH ON FULL TypeId/SubtypeId, NOT SubtypeId ALONE.
+
+A SubtypeId is NOT unique across TypeIds. Caught by an item dump the moment
+seeds appeared on the base:
+
+    MyObjectBuilder_PhysicalObject/Grain =   9   (food)
+    MyObjectBuilder_SeedItem/Grain       = 151   (seed)
+
+Both share the SubtypeId "Grain". The override table was keyed on SubtypeId and
+is consulted BEFORE the TypeId map, so both matched "Grain=Consumables" and 151
+seeds were routed out of Seeds into Consumables. Mushrooms and Vegetables have
+the identical food/seed name collision and routed correctly only because they
+happen not to be overridden - the bug was latent for every one of them.
+
+Keys are now full raw types where the TypeId is confirmed
+(PhysicalObject/Grain, PhysicalObject/SpaceCredit). Lookup tries the full raw
+type first, then the bare SubtypeId as a fallback so an unconfirmed entry still
+works: Algae keeps a bare key because it has never appeared on the base, and a
+guessed TypeId would silently stop its override working.
+
+SILVER MYSTERY SOLVED, and it was never the ore ordering. The same dump showed
+Ore/Silver 142,504 and Ore/CrushedSilver 1,789 against Ingot/Silver 156.92,
+while bauxite beside it ran Bauxite 29M -> Crushed 129k -> Purified 72 ->
+Aluminum 2.1M. Refineries are demonstrably working and silver ore is abundant -
+the silver chain is simply missing its PURIFICATION stage in-game. The
+OrganizeSkip=Ores change that had been proposed would have been built on a wrong
+hypothesis; it is not needed and was not written.
+
 ## 2.4.22
 ALL 37 RECIPES NOW HAVE A VERIFIED OUTPUT SUBTYPE. ElectronMatrix and
 FSSolarCell were the last two: both credited Stock=1 once crafted. Nothing in

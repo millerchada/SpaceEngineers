@@ -12,11 +12,11 @@ The `.cs` is **source**. It is now larger than the PB's own 100,000-character
 ceiling, so it cannot be pasted into a block at all. Build the artifact:
 
 ```bash
-python ../build_pb.py IO_Production_Manager_v2.4.22.cs
-# -> IO_Production_Manager_v2.4.22.min.cs   <-- paste THIS into the block
+python ../build_pb.py IO_Production_Manager_v2.4.23.cs
+# -> IO_Production_Manager_v2.4.23.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.22: source 116,066 -> artifact 89,490 chars (10,510 headroom).
+v2.4.23: source 117,084 -> artifact 89,673 chars (10,327 headroom).
 
 Comments and indentation cost ~20,000 characters and mean nothing at runtime,
 but stripping them from the source would destroy the documentation that keeps
@@ -98,7 +98,7 @@ into a name. There is no "Ejector" tag; there is an ejector *setting*.
 | Item | Behaviour |
 |---|---|
 | **`Heat`** (and any process resource) | Excluded from the warehouse system entirely — never counted, moved, or balanced. A container holding one is also skipped for slot ordering, so its slots are left untouched. |
-| **`Grain`**, **`Algae`** | Routed to Consumables, overriding the broad `PhysicalObject` → Tools rule. |
+| **`Grain`**, **`Algae`** | Routed to Consumables, overriding the broad `PhysicalObject` → Tools rule. Matched on the **full** `TypeId/SubtypeId` — `SeedItem/Grain` is a *different item* and correctly goes to Seeds. |
 | **`SpaceCredit`** | Routed to Misc rather than Tools. |
 
 ## Loadout containers
@@ -242,6 +242,11 @@ Each of these cost real time or resources. Details in CHANGELOG.md.
   credits its alias, so Stock reads 0 forever and the planner reorders every
   cycle. This produced ~129,000 surplus BulletproofGlass before being caught.
   **Verify identities with the Item Identity Dump, never by assumption.**
+- **A `SubtypeId` is not unique across `TypeId`s.** `PhysicalObject/Grain` (food)
+  and `SeedItem/Grain` (seed) share the subtype `Grain`; so do Mushrooms and
+  Vegetables. Any table keyed on subtype alone will conflate them — the category
+  override did, and misrouted 151 seeds into Consumables until v2.4.23. Key on
+  the full raw type wherever the TypeId is known.
 - **`Comparison<T>` is not on the PB whitelist**, though `Func<T,TResult>` is.
   Naming that type in source is a compile error in-game. Use an inline lambda.
 - **`MyIni` cannot remove a key.** `DeleteSection()` followed by `Set()` on the
