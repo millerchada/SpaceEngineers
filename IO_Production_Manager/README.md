@@ -38,9 +38,9 @@ Put these in a block's **name**. Matching is case-insensitive substring.
 | `[Ignore]` `[IOPM-Ignore]` `[Locked]` `!GSIM-Locked` | Container untouched entirely. |
 | `[No Sorting]` `!GSIM-NoSorting` | Container untouched (same as above, for GOAT compatibility). |
 
-A local **connector** is treated as transit cargo and emptied into the
-warehouse — except an **ejector** (`ThrowOut` enabled), which is left alone
-since throwing material away is the point of the block.
+Only an `IMyCargoContainer` can be a warehouse destination. Tagging anything
+else — an O2/H2 generator, an assembler — does nothing. See **Block behaviour
+by type and setting** below.
 
 ### Screens
 
@@ -73,6 +73,33 @@ Precedence: **Locked/Ignore → `[Stock]` loadout → No-Sorting → ordinary un
 Ordinary unload only ever reads `IMyCargoContainer`, `IMyShipConnector` and
 `IMyShipDrill`. Reactors, turrets, cockpits, O2/H2 generators and production
 blocks are never drained.
+
+## Block behaviour by type and setting
+
+Not everything is driven by tags. Much of what IOPM does — or refuses to do —
+follows from a block's **type** or its **own settings**, with nothing to type
+into a name. There is no "Ejector" tag; there is an ejector *setting*.
+
+| Block / setting | Behaviour |
+|---|---|
+| **Ejector** — any connector with `ThrowOut` **on** | **Left alone.** Its contents are never recovered into the warehouse. Throwing material away is the point of the block, and rescuing it fights that. Still usable as a dock anchor. |
+| **Connector** with `ThrowOut` off | Treated as transit cargo: contents are routed into the warehouse, and count as local on-hand stock while they wait. Never a balancing destination. |
+| **Cargo container** | The only block type that can be a warehouse destination. |
+| **Refinery** | Output inventory is evacuated. Its queue and inputs are **never** touched — refinery management is out of scope. |
+| **Assembler in Disassembly mode** | Ignored entirely: no queue scanning, no production, no stall detection, no input evacuation. Grinding down is manual work. |
+| **Basic Assembling Bench** | Never given work. Manual-only by design. |
+| **Survival Kit** | Never given work unless `[Production] AllowSurvivalKitFallback=true`. |
+| **Other production blocks** | Output is always a sorting source; input is staged and tracked for queue support. |
+| **Welders, grinders, drills, reactors, turrets, cockpits, connectors** | Never a *local* sorting source or destination. On a **docked** construct, cargo containers, connectors and drills are unload sources; reactors, turrets, cockpits and O2/H2 generators are never drained. |
+| **Text surface** on any block | Becomes a panel only if tagged. The PB's own screen always shows a compact summary with no tag. |
+
+### Items with special handling
+
+| Item | Behaviour |
+|---|---|
+| **`Heat`** (and any process resource) | Excluded from the warehouse system entirely — never counted, moved, or balanced. A container holding one is also skipped for slot ordering, so its slots are left untouched. |
+| **`Grain`**, **`Algae`** | Routed to Consumables, overriding the broad `PhysicalObject` → Tools rule. |
+| **`SpaceCredit`** | Routed to Misc rather than Tools. |
 
 ## Loadout containers
 
