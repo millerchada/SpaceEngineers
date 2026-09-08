@@ -290,3 +290,27 @@ changes a blueprint ID.
 
 Diagnostics are written back under `[IOPM.*]`. Those sections are script-owned
 output, not settings — safe to delete; they regenerate within a cycle.
+
+### Upgrading does not add new config keys
+
+The default block is written **only when Custom Data is completely empty**. A
+script upgrade never back-fills newly added keys into config you already have —
+it reads them as absent and uses the coded default. So after taking a new
+version, a new setting has to be typed in by hand.
+
+This is deliberate: the alternative rewrites player-owned sections, and MyIni
+cannot delete a key, so a bad automatic write could not be undone. But it means
+"the setting isn't in my Custom Data" does **not** mean the script ignores it.
+Check the default in `LoadConfig` before concluding anything.
+
+Deleting a whole section is likewise harmless — every key falls back to its
+default. Defaults in force are visible in `[IOPM.*]` (e.g. `BorrowPercent`
+appears under `[IOPM.Docking]` whether or not `[Docking]` exists).
+
+### A disabled phase clears its own diagnostics (2.4.24+)
+
+Phases gated by config zero their `[IOPM.*]` counters on the skip path, not
+just on entry. Before 2.4.24, `Organize=false` left `[IOPM.Organization]`
+frozen on the last cycle that ran, which read as an active phase. `Enabled=`
+is now emitted in that section so "ran and did nothing" is distinguishable
+from "was not asked to run". Any new gated phase owes the same reset.

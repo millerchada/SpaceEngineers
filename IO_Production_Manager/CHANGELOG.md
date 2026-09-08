@@ -28,6 +28,47 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.24
+
+Source 118,023 -> artifact 89,937 (saved 28,086, 23.8%; 10,063 headroom).
+
+A skipped phase must not leave its diagnostics reporting the last cycle that
+ran. `OrganizeInventories` zeroes its counters on ENTRY, so gating the call on
+`Organize=false` left `[IOPM.Organization]` frozen on the final cycle before
+the toggle was saved -- counters, `LastAttempt`, container name and all. Found
+live: the section still read
+
+    Examined=34 OutOfOrder=2 Attempts=2 Succeeded=2
+    LastAttempt=... Ores E | PurifiedBauxite | slot 3->2 | ok
+
+with `Organize=false` correctly set and honoured, which reads as an active
+phase and made the toggle look broken. The organizer was in fact off.
+
+This is the same failure class as the frozen status screen in 2.4.14: a stale
+display presented as current state. It is worse than a missing display,
+because it invites a wrong conclusion instead of prompting a question.
+
+- `ResetOrganizeDiag()` extracted; called on the skip path as well as on entry
+  to `OrganizeInventories`. It also clears the string/index state
+  (`_orgLastContainer`, `_orgLastItem`, the slot indexes, `_orgLastError`),
+  which the old on-entry reset never touched at all -- so `LastAttempt` was
+  stale even across normal cycles that examined nothing.
+- `[IOPM.Organization] Enabled=` is now emitted unconditionally, so a reader
+  can distinguish "ran and did nothing" from "was not asked to run" without
+  cross-checking `[Sorting] Organize` by hand.
+
+RULE FOR FUTURE PHASES: any phase gated behind a config flag owes its
+diagnostics a reset on the skip path. Resetting on entry only is not enough.
+
+Also worth recording, since it cost time twice: `WriteDefaultCustomData` fires
+ONLY when Custom Data is empty. New config keys are therefore never
+back-filled into an existing `[IOPM]` config block -- an upgraded script reads
+them as absent and falls back to the coded default. That is correct behaviour
+(the alternative rewrites player-owned sections, and MyIni cannot delete a key
+to undo a mistake) but it means a new setting must be typed in by hand on any
+block that already has config. Live: 2.4.23 with `Organize` absent, defaulting
+true, and the whole `[Docking]` section deleted while all its defaults applied.
+
 ## 2.4.23
 CATEGORY OVERRIDES NOW MATCH ON FULL TypeId/SubtypeId, NOT SubtypeId ALONE.
 
