@@ -28,6 +28,33 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.21
+UNREACHABLE-SOURCE BACKOFF. A source inventory whose items all fail to move is
+now retried once every 6 cycles instead of every cycle.
+
+Failing to route costs no transfer budget - tb only decrements on success - but
+it costs a TryTransferItem binary search PER DESTINATION. Observed live: two
+remote drills on a docked ship with no conveyor path to base storage re-probed
+all 18 Ores containers plus Overflow every single cycle, producing 37 warnings
+and drowning out real ones.
+
+HOW TO READ THAT WARNING: "Transfer failed ... trying next container" only fires
+when capacity said YES and the transfer still failed - meaning no conveyor path,
+NOT a full destination. The giveaway in the same report was Overflow described as
+"full/unreachable" while showing 0% fill. A genuinely full warehouse produces a
+different message.
+
+The backoff covers both cases anyway, since re-probing a full warehouse every
+cycle is equally pointless. It clears the moment a source succeeds again, so a
+conveyor being repaired or space freeing up recovers within 6 cycles without
+intervention. Keyed on the inventory and cleared wholesale past 256 entries,
+since docked ships come and go.
+
+This is the third instance of the same shape this session: the ejector, the
+loadout quota re-parse, and now this. IOPM had no memory of work that failed or
+had not changed, so it repeated it every cycle. Worth checking for when
+something feels expensive.
+
 ## 2.4.20
 A local connector with ThrowOut enabled - an EJECTOR - is no longer treated as
 transit cargo to recover.
