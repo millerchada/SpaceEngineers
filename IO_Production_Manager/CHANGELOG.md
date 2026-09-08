@@ -29,6 +29,23 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.16
+VALIDATED IN-GAME. StockItems settled at 35 with plan records for all four new
+items. Reactor credited Stock=78, confirming Component/Reactor. PeakInstructions
+10,747-15,248 with PeakPhase back to Sorting - DockScan has dropped out of the
+top spot entirely since 2.4.13.
+
+EXPECT A ONE-CYCLE LAG whenever recipes are added. Adding a recipe makes
+EnsureStockAliasesPresent write the new alias into [Stock] at 0 during
+WriteDiagnostics - but LoadConfig for that cycle already ran against the older
+[Stock], so StockItems reads low and the new items have no plan records for one
+cycle. It self-corrects: the script's own write sets the config-dirty flag
+(deliberately independent of the self-write guard, see 2.4.0), so the next Idle
+reloads and the count settles. Not a bug; do not chase it.
+
+STILL UNVERIFIED subtypes: ArmorGlass, SuperMagnet, TokamakBlanket. None exists
+on the base. Craft one and run the Item Identity Dump before setting a nonzero
+target.
+
 FOUR NEW RECIPES from live in-game tooltips. Managed set 31 -> 35.
 
   ArmorGlass      Ceramics Furnace   AluminumIngot 3, PotassiumNitrate 1

@@ -16,7 +16,7 @@ python ../build_pb.py IO_Production_Manager_v2.4.16.cs
 # -> IO_Production_Manager_v2.4.16.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.16: source 108,940 -> artifact 87,025 chars (12,975 headroom).
+v2.4.16: source 108,940 -> artifact 87,025 chars (12,975 headroom). Deployed and validated.
 
 Comments and indentation cost ~20,000 characters and mean nothing at runtime,
 but stripping them from the source would destroy the documentation that keeps
@@ -140,7 +140,7 @@ about:
 |---|---|
 | PB source ceiling | 100,000 characters |
 | Runtime instructions | 50,000 **per invocation** |
-| Observed peak (v2.4.15) | 10,297, phase `DockScan` (9 constructs, 116 unload sources) |
+| Observed peak (v2.4.16) | 10,747-15,248, phase `Sorting` (9 constructs, 116 unload sources) |
 
 The script runs a **cooperative multi-tick phase architecture** — exactly one
 phase per `Update10` tick. A single monolithic cycle exceeded the instruction
