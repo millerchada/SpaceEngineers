@@ -29,7 +29,16 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.21
-UNREACHABLE-SOURCE BACKOFF. A source inventory whose items all fail to move is
+VALIDATED IN-GAME: Warnings 27 -> 0 on the second cycle after deploy, with
+ToBaseTransfers=3 confirming legitimate unloading was not blocked. The first
+cycle after any recompile still warns in full, because the backoff only engages
+once a source has failed a complete pass - do not read that as a failure.
+
+Expect the count to OSCILLATE rather than sit still: near 0 for six cycles, then
+one burst of ~20 when the stuck source is retried. That is the design - the
+fault stays visible, at a sixth of the cost and noise.
+
+STUCK-SOURCE BACKOFF. A source inventory whose items all fail to move is
 now retried once every 6 cycles instead of every cycle.
 
 Failing to route costs no transfer budget - tb only decrements on success - but

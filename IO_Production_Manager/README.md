@@ -171,7 +171,7 @@ about:
 |---|---|
 | PB source ceiling | 100,000 characters |
 | Runtime instructions | 50,000 **per invocation** |
-| Observed peak (v2.4.16) | 16,842, phase `Sorting` (35 containers, 9 docked constructs) |
+| Observed peak (v2.4.21) | 25,250, phase `DockScan` (35 containers, 9 docked constructs, 160 unload sources) |
 
 `Sorting` grows with **container count**; `DockScan` is independent of docked
 construct count since v2.4.13. So the peak tracks the base you build, not other
