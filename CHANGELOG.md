@@ -28,6 +28,23 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.14
+The PB's own surface is now ALWAYS a status target, not merely a fallback.
+
+BUG: Discover added Me.GetSurface(0) only when no [StatusScreen] block was
+found. So on a base that started without one, the fallback wrote the PB screen,
+and the moment a real [StatusScreen] was tagged the PB surface stopped being
+written - and sat frozen on that last render FOREVER, including the now-false
+"WARNING: no [StatusScreen] block found" line. Caught in-game from a photo of a
+PB screen reporting Ores 8 / 19% while the live base reported 17 / 100%.
+
+Nothing in the game clears a text surface for you: if a script stops writing a
+surface, the last frame stays on it indefinitely. Never write a surface
+conditionally unless something else is guaranteed to overwrite it.
+
+The warning still fires when no tagged screen exists, but can no longer go
+stale because the PB surface is refreshed every cycle either way.
+
 ## 2.4.13
 PERFORMANCE ONLY, no behaviour change. DockDiscover walked every block once per
 docked construct - O(constructs x blocks) - and `all` is the WHOLE

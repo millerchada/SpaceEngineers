@@ -25,7 +25,7 @@ the output is stable under a second pass. It hard-errors on `@"..."` verbatim
 strings and `/* */` blocks, the two constructs the transform cannot handle
 safely.
 
-v2.4.13: source 105,260 -> artifact 85,143 chars (14,857 headroom).
+v2.4.14: source 105,586 -> artifact 85,184 chars (14,816 headroom).
 
 The source is now LARGER than the 100,000-character PB ceiling, so it cannot be
 pasted into a block at all. The build step is mandatory, not an optimisation.
@@ -37,13 +37,13 @@ Only the **live working set** sits at the repo root. Superseded versions move to
 
 ```
 IO_Production_Manager_v2.4.9.cs      deployed in-game (validated)
-IO_Production_Manager_v2.4.13.cs     candidate - DockScan single-pass (perf)
+IO_Production_Manager_v2.4.14.cs     candidate - DockScan perf + PB screen fix
 IO_Blueprint_Sniffer_v1.0.3.cs       current
 IO_Item_Identity_Dump_v1.0.0.cs      current
 Endless_Drill_Mk1_Basic_v1_0_0.cs    separate script (not an IOPM version)
 Endless_Drill_Mk1_Headless_v0_8_15.cs
 build_pb.py / README.md / CHANGELOG.md
-archive/production_manager/          v1.0.11 - v2.4.8, v2.4.10 - v2.4.11
+archive/production_manager/          v1.0.11 - v2.4.8, v2.4.10 - v2.4.13
 archive/blueprint_sniffer/           v1.0.0 - v1.0.2
 ```
 
