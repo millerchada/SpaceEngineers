@@ -275,6 +275,54 @@ Each of these cost real time or resources. Details in CHANGELOG.md.
   own render cadence tops out at one paint per logical cycle (~UpdateSeconds),
   which cannot produce a 90-second delay.
 
+## What `[Sorting]` actually does — four separate passes
+
+"Sorting" is an umbrella name, and the config keys under it control four
+different passes that run in this order every cycle. They are frequently
+confused, so:
+
+| Pass | Key | What it does |
+|---|---|---|
+| **Route** | `Enabled` | Moves items **between** blocks — out of drills, transit cargo and mismatched containers, into the warehouse container tagged for that item's category. This is the pass that makes `[IOPM-Inventory] Ores` mean anything. |
+| **Overflow drain** | *(always on)* | Pushes items **back out** of the `Overflow` container into their proper category once room exists there. |
+| **Balance** | `Balance`, `BalanceTolerancePercent` | Evens fill levels **across** the containers of one category, so 18 Ores containers don't end up one full and seventeen empty. |
+| **Organize** | `Organize`, `OrganizeSkip` | Reorders slots **within** a single container into alphabetical order, and merges split stacks of the same item. Moves nothing between blocks. |
+
+So: **Route decides which container an item lives in. Organize decides which
+slot it occupies inside that container.** Balance decides how much goes in
+each of several containers of the same category. `MaxTransfersPerCycle` is a
+single budget shared by all four.
+
+Turning `Organize` off costs you slot tidiness **and stack merging** — the
+merge pass lives inside it. It does not affect routing, categories, balancing
+or production in any way.
+
+### Slot order is not purely cosmetic
+
+Ordering a container looks cosmetic but the conveyor system reads it. A
+draining sorter takes the first matching item it finds, so pinning whichever
+item sorts first into slot 0 starves everything further down the list when one
+item vastly outnumbers the others.
+
+Live case: `Bauxite` 29.1M vs `Silver` 142k in the same 18-container Ores pool.
+`SilverIngot` sat at 157 for an entire session; with ordering off it went
+157 -> 754 -> 2,659. The crusher gate had never been reaching the tail of an
+alphabetised list.
+
+Hence `OrganizeSkip` (2.4.25+): a comma list of categories exempted from slot
+ordering while the rest stay tidy.
+
+```
+[Sorting]
+Organize=true
+OrganizeSkip=Ores
+```
+
+A container is skipped if **any** of its categories is in the list. Names not
+matching a real category are silently ignored, so check the resolved set that
+gets echoed back as `[IOPM.Organization] Skipped=` rather than trusting what
+you typed.
+
 ## Configuration
 
 All configuration lives in the programmable block's **Custom Data**. Sections

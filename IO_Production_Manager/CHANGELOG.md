@@ -28,6 +28,57 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.25
+
+Source 120,051 -> artifact 90,513 (saved 29,538, 24.6%; 9,487 headroom).
+
+`[Sorting] OrganizeSkip=<categories>` exempts named warehouse categories from
+slot ordering while ordering stays on everywhere else.
+
+WHY THIS IS NOT COSMETIC. Alphabetical slot ordering is cosmetic to a reader
+but not to the conveyor system: a draining sorter takes the first matching
+item it finds, so ordering a container pins whichever item sorts first into
+slot 0 permanently. When one item in a pool vastly outnumbers the rest, every
+downstream gate drains that one and never reaches the tail of the list.
+
+Live evidence, base with 18 Ores containers:
+
+    Bauxite      29,107,507      <- sorts first
+    Silver          142,504      <- sorts last
+    CrushedBauxite  129,514      <- crusher had processed this
+    CrushedSilver     1,789      <- and almost none of this
+
+`SilverIngot` sat at 157 for an entire session against 142k of unprocessed
+silver ore. With `Organize=false`: 157 -> 754 -> 2,659, and the item went from
+`RawShortage` to `Satisfied`. The chain was never broken; the gate was being
+fed nothing but bauxite.
+
+Three wrong diagnoses preceded the right one, worth recording because each was
+consistent with the data available at the time:
+
+1. "No purification stage for silver" - refuted by `CrushedSilver` existing.
+2. "Refineries choose ore by their own priority" - the mechanism is the SORTER
+   draining an ordered container, not the refinery.
+3. "Ore alphabetisation is a non-issue, 2.1M aluminium proves the chain works"
+   - it does work, for the ore that sorts first. Abundance of the winning
+   item is not evidence that the losing item is being served.
+
+- `OrganizeSkip` parses through the existing `ParseCategories`, which matches
+  whole alphanumeric words against `CATS` - a comma list needs no new parsing
+  code and an unrecognised name is dropped rather than trusted.
+- A container is skipped if ANY of its categories is exempt. A multi-category
+  container including an exempt one is exempt, since ordering it would pin
+  slot 0 for the exempt category as well.
+- `[IOPM.Organization]` gains `Skipped=` (the RESOLVED set, so a typo is
+  visible rather than echoed back as typed) and `SkippedContainers=`.
+- Default in a freshly written config block is `OrganizeSkip=Ores`. Existing
+  config blocks are NOT back-filled - see 2.4.24 - so this must be typed in
+  by hand on the deployed block.
+
+Note that turning `Organize` off entirely also disables the stack-merge pass
+from 2.4.19, which lives inside `OrganizeInventories`. `OrganizeSkip` exists
+so ore containers can be exempted WITHOUT losing merging elsewhere.
+
 ## 2.4.24
 
 Source 118,023 -> artifact 89,937 (saved 28,086, 23.8%; 10,063 headroom).
