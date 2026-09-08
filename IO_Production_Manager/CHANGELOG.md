@@ -79,6 +79,18 @@ Note that turning `Organize` off entirely also disables the stack-merge pass
 from 2.4.19, which lives inside `OrganizeInventories`. `OrganizeSkip` exists
 so ore containers can be exempted WITHOUT losing merging elsewhere.
 
+CONFIRMED LIVE with `OrganizeSkip=Ores`:
+
+    [IOPM.Organization]
+    Enabled=true  Skipped=Ores  SkippedContainers=18  Examined=16
+
+Container arithmetic checks out exactly: 35 warehouse containers total, minus
+18 Ores exempted by the new key, minus 1 Overflow exempted by the pre-existing
+`OVF` check (which is not counted in `SkippedContainers`), leaves 16 examined.
+`OutOfOrder=0` on all 16, so nothing had fragmented during the interval when
+`Organize` was off - consistent with routing using the stacking overload and
+only the positional move (`stackIfPossible:false`) ever splitting a stack.
+
 ## 2.4.24
 
 Source 118,023 -> artifact 89,937 (saved 28,086, 23.8%; 10,063 headroom).
