@@ -29,6 +29,12 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.22
+VALIDATED IN-GAME: UnloadSources 160 -> 156, exactly the four waste chutes
+leaving the source list, and Warnings settled at 0 for real rather than by
+backoff suppression. Organization resumed with Examined=34, Succeeded=2,
+Failed=0 - confirming the 2.4.19 merge path is not silently no-opping, which was
+the open risk there.
+
 REMOTE ejectors are now skipped as unload sources. 2.4.20 fixed only LOCAL
 connectors, in Discover; remote blocks on a docked construct go through
 DockDiscover, which had its own unload-source check with no ThrowOut test. So
