@@ -28,6 +28,36 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.17
+LaserEmitter and Cryocooler recipes, from live tooltips. Managed set 35 -> 37.
+
+  LaserEmitter  Advanced Assembler  Glass 1, Lightbulb 3, SiliconWafer 2,
+                                    SilverIngot 2, LithiumPaste 1, AluminumIngot 3
+  Cryocooler    Assembler           CopperWire 2, LargeSteelTube 1, Motor 1,
+                                    Thermocouple 1
+
+These were the last two ingredient-only components. No new ItemDefs were needed
+and both output subtypes were already dump-confirmed, so no verification
+protocol applies. Every ingredient across all 37 recipes resolves.
+
+Cryocooler's machine token is "Assembler", and MachineRank deliberately refuses
+to match that token against an "advanced assembler" - so it prefers a plain
+Assembler, matching where the blueprint actually appears. Eligibility is still
+decided by CanUseBlueprint, so the token only affects ranking.
+
+CHAINS NOW CLOSED, with one shared gate:
+  Cryocooler -> SuperMagnet          genuinely producible; all inputs plentiful
+  LaserEmitter -> ElectronMatrix     gated on ALUMINIUM
+  ArmorGlass -> ElectronMatrix, FSSolarCell   gated on ALUMINIUM
+AluminumIngot is refinery output (out of scope) and was ~18 on hand against
+3 per ArmorGlass AND 3 per LaserEmitter. CrushedBauxite was observed entering
+the warehouse, so aluminium is coming - until it does, those three report
+RawShortage rather than producing.
+
+WATCH SilverIngot: ~542 on hand and consumed by GravityGenerator (20 each),
+LaserEmitter (2) and Reactor (5). It has no visible refining stream and is the
+tightest non-refinery input.
+
 ## 2.4.16
 OVERFLOW DRAIN-BACK VALIDATED on live data. With Ores and Ingots both at 100%
 and Overflow absorbing the spill at 42.8%, adding containers (Ores 17->18,
