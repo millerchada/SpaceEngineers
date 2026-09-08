@@ -29,6 +29,22 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.15
+VALIDATED IN-GAME. The 2.4.13 DockDiscover rework delivered: PeakInstructions
+36,056 -> 10,297 with the same 9 connected constructs and 116 unload sources -
+3.5x, from 72% of the ceiling to 21%. Cost should now stay roughly flat as
+ships come and go, since it no longer multiplies by construct count.
+
+New recipes confirmed producing: Superconductor 40 -> 330 with 715 queued, and
+the new ingredient rows (TantalumIngot, CobaltIngot, SilverIngot) tracked and
+satisfied. Organization LastAttempt=none renders correctly on an idle cycle.
+
+COST NOTE for whoever sets these targets: Superconductor is expensive in gold -
+15 GoldWire (9 GoldIngot) each - so a 1,000 target commits ~15,000 GoldWire and
+starves every other gold consumer until it drains. Observed live: 715 queued
+Superconductors produced exactly 10,725 GoldWire of support demand, which took
+GoldWire to 0 and blocked AdvancedComputer (507) and GravityGenerator (19).
+Correct behaviour, but there is no priority mechanism beyond target values.
+
 Tag vocabulary and PB screen, driven by real operational feedback.
 
 1. DOCKING-T FIX. A [No Sorting] tag on a LOCAL connector used to suppress that
