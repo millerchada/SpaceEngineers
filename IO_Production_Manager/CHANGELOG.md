@@ -29,6 +29,28 @@ CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
 ## 2.4.22
+ALL 37 RECIPES NOW HAVE A VERIFIED OUTPUT SUBTYPE. ElectronMatrix and
+FSSolarCell were the last two: both credited Stock=1 once crafted. Nothing in
+the item registry is an assumption any more, which fully closes the class of bug
+that cost 129k surplus glass.
+
+The consumption arithmetic validated the transcribed recipes to the decimal:
+  ArmorGlass    10 -> 8      1 each x 2 items
+  LaserEmitter   1 -> 0      ElectronMatrix needs 1
+  Polymer          -2        ElectronMatrix needs 2
+  Plastic      504 -> 501    FSSolarCell needs 3
+  TantalumIngot 6,775.2 -> 6,774.5 = 0.7 exactly = 0.5 + 0.2
+That last line is FRACTIONAL ingredient math across two different recipes,
+correct to one decimal place. A bonus check landed at the same time: Glass fell
+3 while Lightbulb rose 470 -> 500, and Lightbulb has a x10 output yield needing
+1 Glass per job - 30 bulbs = 3 jobs = 3 Glass, so non-unity yields are right too.
+
+Partial evidence on undock: LoadoutContainers went 2 -> 1 while
+ConnectedConstructs stayed 9, and base Motor moved 750 -> 780 - UP, not down by
+the departed loadout's contents. Remote inventory never counted toward base
+stock, so losing it changed nothing. Not a clean undock test, since the
+construct count did not move.
+
 DOCKING UAT ESSENTIALLY COMPLETE. Two final tests passed on live data:
 
 MULTIPLE LOADOUT CONTAINERS / NO DOUBLE-SPEND - the last untested safety

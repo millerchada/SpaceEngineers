@@ -217,6 +217,9 @@ Confirmed on a live multiplayer server, large base, v2.4.5 - v2.4.22.
 | Borrow formula + hard floor | PASS | stopped dead at 750 = 1000 x (1-25/100) |
 | Natural replenishment (no faked demand) | PASS | Need=57 = 1000-921-22 |
 | Recursive expansion arithmetic | PASS | 79 Motors -> +79 LargeSteelTube, +237 Electromagnet |
+| Fractional ingredient math | PASS | one ElectronMatrix + one FSSolarCell consumed exactly 0.7 TantalumIngot (0.5 + 0.2) |
+| Non-unity output yields | PASS | 30 Lightbulbs (x10 yield) consumed exactly 3 Glass |
+| All 37 output subtypes verified | PASS | every managed item credited Stock once crafted |
 | Shortage is diagnostic-only, no new root | PASS | Short=1 WaitingFor=Motor, zero jobs added |
 | Over-commit recovery (queues are sacred) | PASS | CopperWire 5,105/5,000 + 2,262 queued, JobsAdded=0 |
 | `All` modifier | NOT TESTED | lowest value; least likely modifier to be used |
