@@ -356,6 +356,52 @@ the input is full. Evacuating the input is the correct and only remedy there.
 Rare trigger, correct design. Do not "improve" detection toward per-item
 tracking without first re-reading this section.
 
+## Four kinds of item knowledge — keep them separate
+
+IOPM holds four independent facts about an item. Confusing them is the single
+most expensive class of bug in this project's history, so they are named here.
+
+| Knowledge | Where it lives | What it grants |
+|---|---|---|
+| **Physical identity** | `AddItemGroup` (ItemDef) or `AddLoadAlias` | A name resolves to a real `TypeId/SubtypeId` |
+| **Blueprint identity** | `AddBlueprintGroup` | A job can be queued, IF a recipe also exists |
+| **Recipe / yield** | `AddRecipes` | The planner may manufacture the item |
+| **Preferred machine** | the recipe's machine field | Which block type gets the job |
+
+A live inventory observation proves the **physical identity only**. It never
+proves a blueprint id, a yield, or a machine. So an item can be fully
+identity-known and still never produced — that is a correct state, not a gap.
+
+Two consequences worth internalising:
+
+- **A blueprint id is not an identity.** The blueprint table is consulted when
+  queuing a job, never when resolving a loadout name. `Capacitor` had a
+  blueprint id for several versions and still resolved nowhere (fixed 2.4.26).
+- **An ingredient amount is not a recipe.** `Concrete` and `ArmoredPlate` appear
+  in the Reactor and TokamakBlanket recipes. That proves those recipes consume
+  them; it says nothing about how either is made.
+
+### ItemDef vs loadout alias — which table to use
+
+Adding an identity to the wrong table has real consequences:
+
+- **ItemDef** (`AddItemGroup`) is a **stock-capable** alias. It credits
+  `_onHand` and accepts a `[Stock]` target. Use it only for items IOPM is meant
+  to account for and potentially manufacture.
+- **Loadout alias** (`AddLoadAlias`) resolves a name and grants nothing else —
+  no recipe, no ItemDef, never in `[Stock]` or `_onHand`. It also adds a row to
+  the seeded loadout template menu.
+
+Raw and refining-stage materials belong in the loadout alias table. As ItemDefs
+they would pull refinery output into stock accounting, and refining is out of
+IOPM's scope by design.
+
+`AddLoadAlias` also registers the bare `SubtypeId`, which is **not unique across
+TypeIds**. Where an ore and an ingot share a name, the bare name resolves to
+whichever was registered; spell the other out in full
+(`MyObjectBuilder_Ore/Uranium`) — loadout resolution accepts an explicit
+`TypeId/SubtypeId` at priority D.
+
 ## Configuration
 
 All configuration lives in the programmable block's **Custom Data**. Sections

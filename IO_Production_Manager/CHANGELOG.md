@@ -28,6 +28,112 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.26
+
+Source 120,051 -> 122,848 (artifact 90,807; 9,193 headroom). Managed recipe set
+37 -> 37, UNCHANGED. Identity consolidation from a live Item Identity Dump.
+
+The entire functional diff is four data lines. No planner, sorting, docking,
+queue, budget, stall or phase code was touched.
+
+### Ledger: live Item Identity Dump
+
+- Source: live Item Identity Dump, production Industrial Overhaul 1.7.7 server
+- Confidence: live observed / high
+- Scope of proof: a physical observation proves the PHYSICAL ITEM IDENTITY and
+  nothing else. It does not prove a blueprint id, a yield, or a preferred
+  machine. Those remain separately validated facts.
+
+#### The eight observed components absent from managed [Stock]
+
+| Alias | MyItemType | Was it resolvable in 2.4.25? | Action | Recipe |
+|---|---|---|---|---|
+| ArmoredPlate | Component/ArmoredPlate | yes - ItemDef (TokamakBlanket ingredient) | none needed | PENDING |
+| Capacitor | Component/Capacitor | **NO** - blueprint id only | added to loadout identity table | PENDING |
+| Concrete | Component/Concrete | yes - ItemDef (Reactor ingredient) | none needed | PENDING |
+| Explosives | Component/Explosives | yes - loadout alias | none needed | PENDING |
+| Girder | Component/Girder | yes - loadout alias | none needed | PENDING |
+| RadioCommunication | Component/RadioCommunication | yes - loadout alias | none needed | PENDING |
+| SolarCell | Component/SolarCell | yes - loadout alias | none needed | PENDING |
+| Canvas | Component/Canvas | yes - loadout alias | none needed | PENDING |
+
+Only ONE of the eight was genuinely unresolvable. Capacitor had an entry in the
+knowledge-only blueprint table, and A BLUEPRINT ID IS NOT AN IDENTITY - the
+blueprint table is consulted when queuing a job, never when resolving a loadout
+name. The other seven already resolved, two as ItemDefs and five as loadout
+aliases, so re-listing them would have been dead weight.
+
+NONE of the eight has a validated IO 1.7.7 recipe in durable project knowledge.
+Checked explicitly: every "SolarCell" hit in this changelog is FSSolarCell, a
+different item with a different recipe. Concrete and ArmoredPlate appear only as
+INGREDIENTS of the Reactor and TokamakBlanket recipes - an ingredient amount
+proves consumption, never the recipe that produces the ingredient. So all eight
+are identity-known / recipe-pending, no [Stock] target was created, and the
+2022-era IO quantities in the old external catalog were deliberately not
+resurrected.
+
+#### Previously inferred aliases, now live-observed
+
+These eight were already coded exactly right. Nothing changed but the
+confidence, so the implementation was not churned.
+
+| Alias | MyItemType |
+|---|---|
+| AluminumPlate | Component/InteriorPlate |
+| BasicComputer | Component/Computer |
+| SensorCluster | Component/**Detector** |
+| Glass | Component/**BulletproofGlass** |
+| LargeSteelTube | Component/LargeTube |
+| SmallSteelTube | Component/SmallTube |
+| MedicalComponent | Component/Medical |
+| LithiumPowerCell | Component/PowerCell |
+
+SensorCluster and Glass are the significant pair. `BuildKnowledgeBase` carried a
+"PENDING LIVE UAT" caveat saying only the blueprint ids PODetectorComponent and
+POBulletproofGlass had been validated and that the RESULT subtypes were still
+inferred. Both are now physically observed. That caveat is retired - it was the
+last remaining inferred identity in the managed set, and it was the exact
+failure mode that cost ~129k surplus BulletproofGlass in v2.3.4-v2.4.2.
+
+#### Ammo identities added
+
+    MyObjectBuilder_AmmoMagazine/InteriorTurret_Mag_50rd
+    MyObjectBuilder_AmmoMagazine/MediumCalibreAmmoHE
+
+Self-mapped, because no authoritative GOAT alias is known for either. The exact
+SubtypeId resolves; no friendly name was invented. All existing ammo mappings
+preserved untouched.
+
+#### Ingot identities added
+
+Diffed the 22 live-proven Ingot subtypes against the ItemDef group. Sixteen were
+already known. Six were not:
+
+    DepletedUranium  FuelOil  Magnesium  PrototechScrap  SpentFuel  Uranium
+
+These went into the loadout identity table, deliberately NOT the Ingot ItemDef
+group. An ItemDef is a STOCK-CAPABLE alias: it credits `_onHand` and accepts a
+`[Stock]` target. None of these six is consumed by any managed recipe, so as
+ItemDefs they would add stock accounting for materials IOPM must not manage.
+Refining stays out of scope: no [Stock] targets, no refining recipes, no
+refinery input management, no inferred processing routes.
+
+COLLISION WARNING carried in the source: `AddLoadAlias` also registers the bare
+SubtypeId, so a loadout line `Uranium` resolves to the INGOT. A SubtypeId is not
+unique across TypeIds - proven live by PhysicalObject/Grain vs SeedItem/Grain in
+v2.4.23 - so where an ore of the same name also exists (Uranium and Magnesium
+are the likely pair) a loadout wanting the ore must spell out
+`MyObjectBuilder_Ore/Uranium`. Resolution priority D already accepts that form.
+
+#### Deliberately NOT added
+
+The dump also observed foods, seeds, tools, bottles, datapads and weapons. None
+was hard-coded. Broad categories already classify by TypeId, and the loadout
+resolver has exact observed-subtype fallback, so a hard-coded identity earns its
+place only when it is a managed-production item, a production dependency, a
+known GOAT alias, or an exact subtype that must resolve even when not currently
+observed. IOPM is not an item database.
+
 ## 2.4.25
 
 Source 120,051 -> artifact 90,513 (saved 29,538, 24.6%; 9,487 headroom).
