@@ -28,6 +28,85 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.31
+
+Source 129,718 -> 133,535 (artifact 92,809; 7,191 headroom). Recipes 38 -> 38,
+ItemDefs unchanged, seeding unchanged.
+
+`[Stock]` is now rewritten alphabetically by canonical alias.
+
+### Why it is spliced as TEXT and not done through MyIni
+
+This is the constraint that shapes the whole implementation. MyIni CANNOT
+reorder or remove a key:
+
+- `Set()` appends a new key AFTER the existing ones, in original parse order.
+- `DeleteSection()` followed by `Set()` on the same section overlays the
+  ORIGINALLY PARSED section and resurrects every old key - proven in-game in
+  v2.4.4-v2.4.5 and documented above.
+
+So ordering has to be imposed on the serialized string afterwards.
+`CanonicalizeStock` runs on `ini.ToString()` and replaces only the lines
+between the `[Stock]` header and the next section header. `DeleteSection` is
+still used for `IOPM.*` only, where deleting WITHOUT re-creating does work.
+
+### What is preserved, exactly
+
+- **Values, as RAW TEXT.** `500` stays `500`, `0.5` stays `0.5`, `1e3` stays
+  `1e3`. The value is never parsed to a double and re-formatted, so no rounding
+  or culture formatting can touch it.
+- **Every existing key, including unrecognised ones.** An unknown key sorts
+  into place under its own literal name and is never dropped. A player may be
+  tracking something IOPM knows nothing about; deleting it would be data loss.
+- **Key spelling.** A key written as an alias (`Computer=500`) keeps that
+  spelling and is merely SORTED as its canonical alias (BasicComputer).
+  Renaming would rewrite player input, and `Canon()` already resolves it at
+  load time, so there is nothing to gain. CONSEQUENCE, worth knowing: an alias
+  key appears next to its canonical sibling rather than under its own letter -
+  `BasicComputer, Computer, Canvas` reads oddly but is correct. Seeded configs
+  are all canonical, so this only shows up if a player types an alias by hand.
+- **Every other section**, byte for byte.
+
+### Idempotence
+
+The output is a pure function of the key/value set, so cycle two produces a
+byte-identical string, `finalText == _lastWrittenCustomData` is true, and the
+write is skipped entirely. Line endings are normalised to whatever the incoming
+text already uses, so the pass cannot oscillate between LF and CRLF forms.
+
+No config-change loop: `_lastCustomDataSeen = Me.CustomData` (a RE-READ, not
+`finalText`) already ran after every write and now covers the spliced section
+too, so `Main()` sees no change and `_cfgDirty` stays false.
+
+### Verified before shipping
+
+The C# was ported line for line to Python and run against the real live Custom
+Data plus adversarial inputs:
+
+    live data, 3 passes ......... byte-identical from pass 1
+    keys 45 -> 45, none lost, no value changed, none added
+    ordering matches sort-by-canonical-alias
+    [General] [Sorting] [Production] [Display] .... untouched
+    unknown keys (ZzUserThing, AaaCustom, WeirdValue) .. survive, interleaved
+    alias key Computer=500 ...... spelling and value kept, sorts as BasicComputer
+    BasicComputer=1000 AND Computer=500 present ... BOTH survive, neither deleted
+    raw values 0.5 and 1e3 ...... preserved verbatim
+    CRLF input .................. every newline stays CRLF, idempotent
+    LF input .................... stays LF
+    sparse [Stock] with one key . seeded to 45, existing value kept, idempotent
+    [Stock] as the LAST section . idempotent
+
+Two assertions in the first test run reported failures that were faults in the
+TEST, not the code: a "duplicate BasicComputer" check whose adversarial input
+already contained both keys (both must survive, and did), and a malformed CRLF
+expression. Both were re-checked properly and pass.
+
+### Unchanged
+
+One AddQueueItem site, 38 recipes, one guarded `ini.Set("Stock", ...)`,
+`DeleteSection` still `IOPM.*` only. No planner, recipe, sorting, docking or
+queue behaviour was touched.
+
 ## 2.4.30
 
 Source 128,695 -> 129,718 (artifact 91,390; 8,610 headroom). Managed recipe set

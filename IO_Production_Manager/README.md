@@ -444,6 +444,13 @@ including a key you wrote under an alias (`Computer=500` correctly marks
 A target of `0` means "track it, never manufacture it". Delete a row and it
 comes back at `0` on the next cycle; set it to a number to give it a floor.
 
+`[Stock]` is kept sorted alphabetically by canonical alias (2.4.31+). Your
+values are preserved as raw text — `0.5` stays `0.5` — and keys IOPM does not
+recognise are sorted into place rather than dropped, so you can track your own
+items there safely. A key you write under an alias (`Computer=500`) keeps that
+spelling and sorts beside its canonical sibling (`BasicComputer`), which reads
+slightly oddly but never rewrites what you typed.
+
 Everything in `[Stock]` appears on the `[IOPM-Stock]` LCD (2.4.29+), including
 items IOPM cannot manufacture and keys you added by hand. `[IOPM.StockDisplay]
 Rows` and `[IOPM.Production] StockItems` read the same dictionary, so they
