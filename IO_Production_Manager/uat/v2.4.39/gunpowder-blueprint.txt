@@ -1,0 +1,46 @@
+# v2.4.39 UAT EVIDENCE - Gunpowder blueprint id, the final gate
+#
+# TOOL
+#   IO Blueprint Sniffer v1.0.3, live on the grid.
+#
+# OBSERVED
+#   LAST SEEN
+#   MyObjectBuilder_BlueprintDefinition/Gunpowder
+#   Machine=Munitions Factory
+#
+# WHY THIS COULD NOT BE GUESSED
+#   The subtype happens to equal the alias. That is exactly why guessing would have been
+#   wrong to do rather than lucky to get right - the same table holds POSteelPlate,
+#   POMotorComponent, POLargeTube and PODetectorComponent, none of which follow that
+#   pattern. Roughly half the ids carry the PO prefix, so "the obvious one" was a coin
+#   flip, and a coin flip that happens to land right is still not evidence.
+#
+# THE COMPLETE EVIDENCE CHAIN - five facts, five different methods
+#   identity   MyObjectBuilder_Ingot/Magnesium   Item Identity Dump. Found by QUANTITY, not
+#              by name: IO reuses the vanilla Magnesium subtype for the item the UI calls
+#              Gunpowder, so searching a dump for "Gunpowder" returns nothing at all.
+#   producer   Munitions Factory                 machine enumeration
+#   inputs     PotassiumNitrate 6, Carbon 2, Sulfur 2    machine enumeration
+#   output     10                                one manual blueprint run, counted. The UI
+#              displays no yield; an absent yield is UNKNOWN, never 1.
+#   blueprint  MyObjectBuilder_BlueprintDefinition/Gunpowder   IO Blueprint Sniffer v1.0.3
+#
+#   Not one of these was inferred from a display name, and no two came from the same source.
+#   Two were actively misleading from the name: it points at the wrong subtype, and the
+#   absent yield invites a default of 1.
+#
+# STATE AFTER v2.4.39 - confirmed by tests/audit_machine_coverage.py, not asserted
+#   canonical alias      : Gunpowder
+#   physical identity    : MyObjectBuilder_Ingot/Magnesium
+#   blueprint identity   : Gunpowder
+#   ItemDef / blueprint  : yes / yes
+#   active Recipe        : yes
+#   manual-queue attrib. : yes        <-- was "no" in v2.4.38
+#   ingredients match    : YES
+#   CLASSIFICATION       : MANAGED
+#
+# WHAT TO WATCH ON FIRST LIVE RUN
+#   Explosives was queueable in principle and blocked in practice for four versions.
+#   It should now progress. Gunpowder has no [Stock] target, so it will only be produced
+#   as support demand for Explosives - expect ceil(demand / 10) jobs, not one per unit.
+#   That single observation confirms the yield correction and the blueprint id together.

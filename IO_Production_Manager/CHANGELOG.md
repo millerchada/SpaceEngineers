@@ -28,6 +28,73 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.39 - Gunpowder is operational
+
+Artifact 86,828; headroom 13,172. Recipes 47, unchanged.
+
+    Gunpowder = MyObjectBuilder_BlueprintDefinition/Gunpowder
+
+Captured live by IO_Blueprint_Sniffer v1.0.3 on the Munitions Factory. The last
+of four gates; Gunpowder is now fully evidenced and operational.
+
+### Why the id was never guessed
+
+The subtype turns out to equal the alias - which is exactly why guessing would
+have been wrong to do rather than lucky to get right. The same table holds
+`POSteelPlate`, `POMotorComponent`, `POLargeTube` and `PODetectorComponent`.
+Roughly half the ids carry the `PO` prefix, so "the obvious one" was a coin
+flip, and a coin flip that lands right is still not evidence.
+
+### Five facts, five methods, none from a display name
+
+    identity   Ingot/Magnesium      Item Identity Dump - found by QUANTITY, because IO
+                                    reuses the vanilla Magnesium subtype and searching a
+                                    dump for "Gunpowder" returns nothing at all
+    producer   Munitions Factory    machine enumeration
+    inputs     6 / 2 / 2            machine enumeration
+    output     10                   one manual blueprint run, counted
+    blueprint  .../Gunpowder        IO_Blueprint_Sniffer v1.0.3
+
+No two came from the same source. Two of them were actively MISLEADING from the
+display name: it points at the wrong subtype, and the absent yield invites a
+default of 1.
+
+### Manual-queue attribution now works
+
+Confirmed by the audit rather than asserted:
+
+    manual-queue attrib. : yes        <-- was "no" in v2.4.38
+    CLASSIFICATION       : MANAGED
+
+`BlueprintReverseMap` iterates `_items`, and Gunpowder has been an ItemDef since
+v2.4.35. Only the blueprint id was missing, so adding it made attribution work
+with no code change - a hand-queued Gunpowder job is now credited at jobs x 10
+by `ScanQueues`.
+
+The blueprint went into the RECIPE-BACKED group rather than the knowledge-only
+one, because `TryGetBlueprint` is now reached from `EnsureFeasible` and
+`ApplyPlan`, not only from the reverse map.
+
+### Tests
+
+`tests/tests_yield_math.py` gains a `BlueprintReverseMap` + `ScanQueues` port:
+the blueprint id resolves back to the alias, a hand-queued job is attributable,
+1 job credits 10 and 2 credit 20, and - the control that gives the rest meaning -
+**without a blueprint id it is NOT attributable**, reproducing the v2.4.38 state
+this release resolves. Plus a catalog assertion that the id is actually present.
+
+Existing coverage retained: demand 10 -> 1 job, demand 11 -> 2 jobs, one job
+reserves 6/2/2, rounding, `Lightbulb|10` non-regression, and unity yields
+including SolarCell 47 -> IronIngot 141.
+
+### What to watch live
+
+`Explosives` was queueable in principle and blocked in practice for four
+versions; it should now progress. Gunpowder has no `[Stock]` target, so it is
+produced only as support demand - expect `ceil(demand / 10)` jobs, not one per
+unit. That single observation confirms the yield correction and the blueprint id
+together, and is the cheapest possible live check on both.
+
 ## 2.4.38 — Gunpowder output yield is 10, not 1
 
 Artifact 86,803; headroom 13,197. Recipes 47, unchanged. **Gunpowder is still

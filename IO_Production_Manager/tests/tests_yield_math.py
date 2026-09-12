@@ -111,9 +111,40 @@ check('SolarCell demand 47 -> IronIngot 141 (matches live UAT)',
       plan(47, 1, {'IronIngot': 3})[1]['IronIngot'], 141)
 
 print()
+print('MANUAL-QUEUE ATTRIBUTION - BlueprintReverseMap + ScanQueues')
+
+
+def reverse_map(items, blueprints):
+    """Port of BlueprintReverseMap: iterates _items (ALL ItemDefs, not just recipes) and
+    keys blueprint-id -> alias. A loadout alias is NOT in _items and so can never attribute."""
+    m = {}
+    for alias in items:
+        bp = blueprints.get(alias)
+        if not bp:
+            continue                      # TryGetBlueprint failed - skipped
+        key = 'MyObjectBuilder_BlueprintDefinition/' + bp
+        if key not in m:
+            m[key] = alias      # first declaration wins, as in the C#
+    return m
+
+
+ITEMS = ['Gunpowder', 'SteelPlate', 'Lightbulb']
+BPS = {'Gunpowder': 'Gunpowder', 'SteelPlate': 'POSteelPlate', 'Lightbulb': 'Lightbulb'}
+rm = reverse_map(ITEMS, BPS)
+GP_BP = 'MyObjectBuilder_BlueprintDefinition/Gunpowder'
+check('Gunpowder blueprint id resolves back to the alias', rm.get(GP_BP), 'Gunpowder')
+check('a hand-queued job is attributable at all', GP_BP in rm, True)
+check('1 hand-queued job credits 10 finished output', queued_output(1, 10), 10)
+check('2 hand-queued jobs credit 20', queued_output(2, 10), 20)
+# Without a blueprint id the alias is skipped entirely - the v2.4.38 state.
+rm_nobp = reverse_map(ITEMS, {k: v for k, v in BPS.items() if k != 'Gunpowder'})
+check('without a blueprint id it was NOT attributable (v2.4.38 state)',
+      GP_BP in rm_nobp, False)
+
+print()
 print('THE CATALOG MATCHES WHAT IS ASSERTED ABOVE')
 src = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                   'IO_Production_Manager_v2.4.38.cs')
+                   'IO_Production_Manager_v2.4.39.cs')
 if os.path.exists(src):
     text = io.open(src, encoding='utf-8').read()
     m = re.search(r'"Gunpowder\|([0-9.]+)\|([^|"]*)\|([^"]*)"', text)
@@ -125,6 +156,8 @@ if os.path.exists(src):
               'PotassiumNitrate:6,Carbon:2,Sulfur:2')
     lb = re.search(r'"Lightbulb\|([0-9.]+)\|', text)
     check('Lightbulb yield still 10', lb.group(1) if lb else None, '10')
+    check('Gunpowder blueprint id present in the catalog',
+          'Gunpowder=Gunpowder' in text, True)
 else:
     print('  (source not found - skipped)')
 
