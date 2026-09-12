@@ -50,5 +50,12 @@ warning on every run. Do not read a passing coverage report as global coverage.
 | Machine | Enumeration | Observed recipes |
 |---|---|---|
 | Advanced Assembler | COMPLETE | 17 |
+| Assembler | COMPLETE | 16 |
 
 Every other Industrial Overhaul production block is unaudited.
+
+**One file per block, never merged.** Several outputs appear on more than one
+machine — Hydrogen Bottle, Oxygen Bottle, and the MR-20/MR-8P magazines are on
+both the Assembler and the Advanced Assembler with identical requirements. That
+is an observation about the mod, not a reason to share a file: enumerating one
+machine is not evidence about another.

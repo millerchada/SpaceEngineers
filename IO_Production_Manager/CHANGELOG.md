@@ -28,6 +28,71 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## Machine coverage: Assembler enumerated (no runtime change)
+
+Second machine, separate evidence file, deliberately NOT merged with the
+Advanced Assembler. 16 observed outputs across three UI sections.
+
+    Assembler subtotal (16):  MANAGED 6  KNOWN_IDENTITY_ONLY 2
+                              MISSING_FROM_IOPM 7  UNKNOWN 1
+
+### A real ingredient mismatch, and it is ours
+
+    Solar Cell   live : Glass 1, CopperWire 1, SiliconWafer 5, IronIngot 3
+                 iopm : Glass 1, CopperWire 1, SiliconWafer 5, IronIngot 2
+
+The recipe added in v2.4.34 came from operator-supplied evidence reading
+IronIngot 2. This full-UI enumeration reads 3. TWO OPERATOR-SUPPLIED EVIDENCE
+SETS DISAGREE, so the audit reports the conflict and NOTHING WAS CHANGED. Picking
+the newer reading because it is newer would be a guess wearing a timestamp.
+Until it is resolved IOPM under-reserves iron for SolarCell by 1 per unit, which
+surfaces as a shortfall late in a build rather than a hard failure.
+
+This is the first time an audit has caught a defect in a shipped recipe rather
+than a gap in the catalog - which is exactly what the machine-coverage dimension
+was added to do.
+
+### Machine tokens confirmed rather than inferred
+
+Capacitor, Cryocooler, MedicalComponent, Motor, RadioCommunication and SolarCell
+all carry the "Assembler" token, and all six were observed on the Assembler.
+For Capacitor, RadioCommunication and SolarCell that token was an INFERENCE when
+it was written in v2.4.34 - it is now observed. Producer gaps: none.
+
+### AcidPowerCell exposes a third knowledge state
+
+It has a blueprint id in the repo knowledge table and NO physical identity, so it
+is neither KNOWN_IDENTITY_ONLY nor MISSING_FROM_IOPM. The audit now classifies
+that as UNKNOWN, on the standing principle that A BLUEPRINT ID IS NOT AN IDENTITY:
+it says how to queue a job, never what the resulting item IS.
+
+Worth noting against the v2.4.33 size-reclamation audit, which listed
+AcidPowerCell among five "genuinely unreachable" blueprint entries. Both are
+true and they are not in tension: unreachable described CODE reachability given
+no recipe, while this enumeration proves the PRODUCT is real and craftable. It
+is a live example of why those five were kept rather than deleted for 123
+characters.
+
+Its recipe also lists Ice, marked Not Craftable in the UI - mined, not
+manufactured. No identity was inferred for it.
+
+### Still unresolved, still not guessed
+
+    MR-8P Rifle Magazine   repo subtype ends _5rd; live UI shows capacity 8.
+                           Capacity alone is not proof of a different subtype,
+                           and no replacement has been inferred. Observed on BOTH
+                           machines with identical requirements.
+    S-20A Pistol Magazine  no S-20A entry anywhere in the repo (only S-10/E/A)
+    Acid Power Cell        blueprint known, physical identity never observed
+
+### Cross-machine observations, recorded as observations
+
+Hydrogen Bottle, Oxygen Bottle and the MR-20/MR-8P magazines appear on BOTH
+machines with identical requirements. Enhanced Grinder / Hand Drill / Welder are
+each an ingredient of their Proficient counterpart on the Advanced Assembler -
+so the Assembler's Enhanced Tools are not a parallel tier but an INPUT tier to
+the Advanced Assembler's. None of this merges the evidence files.
+
 ## Machine-coverage audit — Advanced Assembler enumerated (no runtime change)
 
 A third completeness dimension, and one the existing audits structurally cannot

@@ -73,7 +73,7 @@ def main():
 
     totals = {'MANAGED': 0, 'KNOWN_IDENTITY_ONLY': 0, 'MISSING_FROM_IOPM': 0,
               'INTENTIONAL_EXCLUDE': 0, 'UNKNOWN': 0}
-    mismatches, unresolved = [], []
+    mismatches, unresolved, producer_gaps = [], [], []
 
     for ev in machines:
         print('=' * 116)
@@ -83,6 +83,8 @@ def main():
                  ', '.join('%s %d' % (k, v) for k, v in ev['observed_categories'].items())))
         print('provenance: %s' % ev['provenance'])
         print('=' * 116)
+        per = {'MANAGED': 0, 'KNOWN_IDENTITY_ONLY': 0, 'MISSING_FROM_IOPM': 0,
+               'INTENTIONAL_EXCLUDE': 0, 'UNKNOWN': 0}
 
         for r in ev['recipes']:
             disp = r['display']
@@ -104,7 +106,11 @@ def main():
                         break
 
             has_item = alias in items if alias else False
-            has_bp = alias in blueprints if alias else False
+            # Blueprint knowledge can exist WITHOUT an ItemDef - AcidPowerCell is the live
+            # case. Look it up by the evidence's own hint too, or the audit reports "nothing
+            # known" about something the repo demonstrably knows a blueprint id for.
+            has_bp = bool((alias and alias in blueprints) or (hint and hint in blueprints))
+            bp_id = blueprints.get(alias) or (blueprints.get(hint) if hint else None)
             has_recipe = alias in recipes if alias else False
             stockcfg = alias in configurable if alias else False
             # BlueprintReverseMap iterates _items, so only an ItemDef-backed alias WITH a
@@ -129,25 +135,41 @@ def main():
                 cls = 'MANAGED'
             elif alias and (has_item or alias in loadalias):
                 cls = 'KNOWN_IDENTITY_ONLY'
-            elif ident_hint is None and not alias:
-                cls = 'MISSING_FROM_IOPM'
-            else:
+            elif has_bp:
+                # Partial knowledge: a blueprint id, but no physical identity. A BLUEPRINT ID
+                # IS NOT AN IDENTITY - it says how to queue a job, never what the resulting
+                # item IS - so this is neither "known" nor "absent".
                 cls = 'UNKNOWN'
+            else:
+                cls = 'MISSING_FROM_IOPM'
+
+            # PRODUCER COVERAGE, reported separately from identity coverage. A recipe can be
+            # correct and still name a machine this item was never observed on; the token is
+            # only a preference, so this is information, not a fault.
+            if has_recipe:
+                tok = recipes[alias]['machine']
+                names_this = any(t.strip().lower() == ev['machine_token_in_iopm'].lower()
+                                 for t in tok.split(';'))
+                if not names_this:
+                    producer_gaps.append((ev['machine'], disp, tok))
 
             if r.get('identity_confidence', '').startswith(('CONFLICT', 'UNRESOLVED')):
                 unresolved.append((disp, r['identity_confidence']))
 
             totals[cls] += 1
+            per[cls] += 1
             print()
             print('  %-28s [%s]' % (disp, r['category']))
             print('    canonical alias      : %s' % (alias or '-- none --'))
             print('    physical identity    : %s' % (ident or '-- unresolved --'))
-            print('    blueprint identity   : %s' % (blueprints.get(alias, '-- none --')))
+            print('    blueprint identity   : %s' % (bp_id or '-- none --'))
             print('    ItemDef / blueprint  : %-3s / %-3s' % ('yes' if has_item else 'no',
                                                               'yes' if has_bp else 'no'))
             print('    active Recipe        : %s' % ('yes' if has_recipe else 'no'))
             print('    StockConfigurable    : %s' % ('yes' if stockcfg else 'no'))
             print('    manual-queue attrib. : %s' % ('yes' if attributable else 'no'))
+            if has_recipe:
+                print('    iopm machine token   : %s' % recipes[alias]['machine'])
             print('    ingredients match    : %s' % match)
             print('    CLASSIFICATION       : %s' % cls)
             if r.get('notes'):
@@ -155,9 +177,14 @@ def main():
             if r.get('identity_confidence'):
                 print('    identity confidence  : %s' % r['identity_confidence'])
 
+        print()
+        print('  -- %s subtotal (%d outputs): %s' % (
+            ev['machine'], sum(per.values()),
+            '  '.join('%s %d' % (k, v) for k, v in per.items() if v)))
+
     print()
     print('=' * 116)
-    print('SUMMARY')
+    print('SUMMARY (all machines audited)')
     for k in ('MANAGED', 'KNOWN_IDENTITY_ONLY', 'MISSING_FROM_IOPM', 'INTENTIONAL_EXCLUDE',
               'UNKNOWN'):
         print('  %-22s %d' % (k, totals[k]))
@@ -171,6 +198,16 @@ def main():
             print('      iopm : %s' % have)
     else:
         print('  ingredient mismatches: none')
+    print()
+    if producer_gaps:
+        print('  PRODUCER GAPS (%d) - IOPM has a recipe whose machine token does not name the'
+              % len(producer_gaps))
+        print('  machine the output was observed on. Token is a PREFERENCE only; eligibility')
+        print('  comes from CanUseBlueprint, so this is information, not a defect.')
+        for m, d, tok in producer_gaps:
+            print('    %-28s observed on %-20s token "%s"' % (d, m, tok))
+    else:
+        print('  producer gaps: none - every modelled recipe names the machine it was seen on')
     if unresolved:
         print()
         print('  UNRESOLVED / CONFLICTING IDENTITIES (%d)' % len(unresolved))

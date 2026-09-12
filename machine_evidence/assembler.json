@@ -1,0 +1,108 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE for the ASSEMBLER. Separate block, separate evidence.",
+    "Deliberately NOT merged with advanced_assembler.json: the two machines expose different",
+    "catalogues, and enumerating one says nothing about the other. Several outputs appear on",
+    "both (Hydrogen Bottle, Oxygen Bottle, MR-20 and MR-8P magazines) - that is an observation",
+    "about the mod, not a reason to share a file.",
+    "See machine_evidence/README.md for transcription rules."
+  ],
+  "machine": "Assembler",
+  "machine_token_in_iopm": "Assembler",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 16,
+  "observed_categories": { "Components": 7, "Enhanced Tools": 7, "Light Ammo": 2 },
+  "provenance": "operator, full UI enumeration across all three sections, 2026-09-12",
+  "cross_machine_notes": [
+    "Hydrogen Bottle and Oxygen Bottle appear on BOTH Assembler and Advanced Assembler with",
+    "identical requirements (5 Large Steel Tube, 15 Nickel Ingot).",
+    "MR-20 and MR-8P Rifle Magazines appear on both machines with identical requirements.",
+    "Enhanced Grinder / Hand Drill / Welder are each an INGREDIENT of their Proficient",
+    "counterpart on the Advanced Assembler, and of themselves (repair/upgrade recipe)."
+  ],
+
+  "recipes": [
+    { "category": "Components", "display": "Acid Power Cell", "alias_hint": "AcidPowerCell",
+      "identity_hint": null, "build_time_s": 2.7,
+      "notes": "ingredient 'Ice' is marked Not Craftable in the UI - mined, not manufactured",
+      "identity_confidence": "UNRESOLVED - blueprint id AcidPowerCell is in the repo knowledge table but no physical TypeId/SubtypeId has ever been observed",
+      "ingredients": { "SteelPlate": 1, "CopperIngot": 3, "CopperWire": 2, "Sulfur": 5,
+                       "Ice": 3 } },
+
+    { "category": "Components", "display": "Capacitor Cell", "alias_hint": "Capacitor",
+      "identity_hint": "MyObjectBuilder_Component/Capacitor", "build_time_s": 1,
+      "ingredients": { "Rubber": 1, "AluminumIngot": 1, "Ceramic": 1 } },
+
+    { "category": "Components", "display": "Cryogenic Cooler", "alias_hint": "Cryocooler",
+      "identity_hint": "MyObjectBuilder_Component/Cryocooler", "build_time_s": 3.3,
+      "ingredients": { "CopperWire": 2, "LargeSteelTube": 1, "Motor": 1, "Thermocouple": 1 } },
+
+    { "category": "Components", "display": "Medical Comp.", "alias_hint": "MedicalComponent",
+      "identity_hint": "MyObjectBuilder_Component/Medical", "build_time_s": 2,
+      "ingredients": { "IronIngot": 12, "NickelIngot": 8, "SilverIngot": 8 } },
+
+    { "category": "Components", "display": "Motor", "alias_hint": "Motor",
+      "identity_hint": "MyObjectBuilder_Component/Motor", "build_time_s": 1,
+      "ingredients": { "Electromagnet": 3, "LargeSteelTube": 1, "CopperWire": 3 } },
+
+    { "category": "Components", "display": "Radio-Comm Comp.",
+      "alias_hint": "RadioCommunication",
+      "identity_hint": "MyObjectBuilder_Component/RadioCommunication", "build_time_s": 1.3,
+      "ingredients": { "SmallSteelTube": 6, "CopperWire": 12 } },
+
+    { "category": "Components", "display": "Solar Cell", "alias_hint": "SolarCell",
+      "identity_hint": "MyObjectBuilder_Component/SolarCell", "build_time_s": 1,
+      "notes": "CONFLICTS WITH THE EVIDENCE USED FOR v2.4.34, which gave IronIngot 2. This full-UI enumeration reads 3. Not reconciled - see the audit's mismatch report.",
+      "ingredients": { "Glass": 1, "CopperWire": 1, "SiliconWafer": 5, "IronIngot": 3 } },
+
+    { "category": "Enhanced Tools", "display": "Enhanced Grinder",
+      "alias_hint": "EnhancedGrinder", "identity_hint": null, "build_time_s": 3.3,
+      "notes": "used to craft Proficient Grinder (Advanced Assembler) and itself",
+      "ingredients": { "Ceramic": 1, "CopperWire": 1, "Motor": 1, "IronIngot": 3 } },
+
+    { "category": "Enhanced Tools", "display": "Enhanced Hand Drill",
+      "alias_hint": "EnhancedHandDrill", "identity_hint": null, "build_time_s": 3.3,
+      "notes": "used to craft Proficient Hand Drill (Advanced Assembler) and itself",
+      "ingredients": { "LargeSteelTube": 1, "CopperWire": 2, "Motor": 1, "IronIngot": 3 } },
+
+    { "category": "Enhanced Tools", "display": "Enhanced Welder",
+      "alias_hint": "EnhancedWelder", "identity_hint": null, "build_time_s": 3.3,
+      "notes": "used to craft Proficient Welder (Advanced Assembler) and itself",
+      "ingredients": { "CopperWire": 2, "SmallSteelTube": 1, "AluminumPlate": 1 } },
+
+    { "category": "Enhanced Tools", "display": "MR-20 Rifle", "alias_hint": "MR20Rifle",
+      "identity_hint": null, "build_time_s": 3.3,
+      "notes": "uses MR-20 Rifle Magazine; also lists 5.56x45mm NATO magazine (Not Craftable)",
+      "ingredients": { "IronIngot": 2, "SmallSteelTube": 2, "Plastic": 2, "CobaltIngot": 1 } },
+
+    { "category": "Enhanced Tools", "display": "MR-8P Rifle", "alias_hint": "MR8PRifle",
+      "identity_hint": null, "build_time_s": 3.3,
+      "notes": "uses MR-8P Rifle Magazine; also lists 5.56x45mm NATO magazine (Not Craftable)",
+      "ingredients": { "IronIngot": 2, "SmallSteelTube": 2, "Plastic": 2, "SiliconWafer": 1 } },
+
+    { "category": "Enhanced Tools", "display": "Hydrogen Bottle", "alias_hint": "HydrogenBottle",
+      "identity_hint": null, "build_time_s": 3.3,
+      "notes": "identical recipe on the Advanced Assembler",
+      "ingredients": { "LargeSteelTube": 5, "NickelIngot": 15 } },
+
+    { "category": "Enhanced Tools", "display": "Oxygen Bottle", "alias_hint": "OxygenBottle",
+      "identity_hint": null, "build_time_s": 3.3,
+      "notes": "identical recipe on the Advanced Assembler",
+      "ingredients": { "LargeSteelTube": 5, "NickelIngot": 15 } },
+
+    { "category": "Light Ammo", "display": "MR-20 Rifle Magazine",
+      "alias_hint": "MR20RifleMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/AutomaticRifleGun_Mag_20rd",
+      "identity_confidence": "historical alias table, not re-confirmed live",
+      "magazine_capacity": 20, "build_time_s": 3.3,
+      "ingredients": { "IronIngot": 0.8, "CopperIngot": 0.2, "Gunpowder": 0.15 } },
+
+    { "category": "Light Ammo", "display": "MR-8P Rifle Magazine",
+      "alias_hint": "MR8PRifleMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/PreciseAutomaticRifleGun_Mag_5rd",
+      "identity_confidence": "CONFLICT - the repo's historical subtype ends _5rd; the live UI shows capacity 8. Capacity alone is NOT proof of a different subtype and no replacement has been inferred.",
+      "magazine_capacity": 8, "build_time_s": 3.3,
+      "ingredients": { "IronIngot": 0.8, "CopperIngot": 0.2, "Gunpowder": 0.15 } }
+  ]
+}
