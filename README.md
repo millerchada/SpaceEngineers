@@ -50,3 +50,27 @@ working in-game, the version it replaced moves to that folder's `archive/` with
 
 Generated `*.min.cs` artifacts are gitignored: they rebuild byte-for-byte from
 the source plus the committed `build_pb.py`.
+
+## Before deploying: compile-check, then build
+
+    python check_pb.py IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs
+    python build_pb.py IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs
+
+`check_pb.py` compiles the script locally with `csc` against `se_stubs.cs`, which
+holds hand-written shapes for the Space Engineers PB API. Without it the GAME is
+the first thing to see a compile error, which has cost two deploy round trips:
+`Comparison<CI>` in v2.4.3 and a shadowed local in v2.4.33.
+
+It catches syntax errors, shadowed locals (CS0136), duplicate locals, wrong
+argument counts, unknown members, and screens separately for PB-whitelist
+constructs that `csc` accepts but the game rejects.
+
+It does NOT catch behaviour, and it does not catch an API shape that
+`se_stubs.cs` gets wrong. When a script uses an API the stubs lack, the error is
+reported under "probable se_stubs.cs gaps" — add the member to the stubs rather
+than changing the script.
+
+`build_pb.py` is a separate concern: it verifies the comment-stripping
+TRANSFORM (string literals survive byte-identical, brace/paren counts match). It
+has no idea whether the C# is valid. Passing `build_pb.py` never meant the
+script compiles — that gap is what `check_pb.py` closes.

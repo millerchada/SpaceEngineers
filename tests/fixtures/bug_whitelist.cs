@@ -2328,6 +2328,7 @@ string CanonicalizeStock(MyIni ini, string text) {
     ord[name] = known ? c : name;
     names.Add(name);
   }
+  Comparison<string> cmp = (a, b) => 0;
   names.Sort((a, b) => {
     int r = string.Compare(ord[a], ord[b], OIC);
     return r != 0 ? r : string.Compare(a, b, OIC); // deterministic tie-break

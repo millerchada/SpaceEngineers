@@ -28,6 +28,61 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.33 — in-game compile fix, and a local compile checker
+
+The first paste of v2.4.33 failed to compile in game:
+
+    Program(2194,157): Error: A local or parameter named 'raw' cannot be
+    declared in this scope because that name is used in an enclosing local
+    scope to define a local or parameter
+
+Introduced in v2.4.32, in `CanonicalizeStock`: a loop-local `string raw` for the
+per-key value and a method-level `string[] raw = text.Split()` further down the
+same method. C# refuses a method-scope local that collides with an earlier
+block-scope local EVEN WHEN the method-scope declaration appears later in the
+text. Renamed to `rawVal`. Fixed in place rather than as a new version, since
+v2.4.33 never compiled and so was never an immutable released version - the same
+precedent as the `Comparison<CI>` fix in v2.4.3.
+
+### check_pb.py — the game should not be the first compiler to see the script
+
+Two of this project's compile errors were found only by pasting into the game.
+`build_pb.py` verifies the comment-stripping TRANSFORM, not the C#: passing it
+never meant the script compiles, and saying "build verified" about it invited
+exactly that misreading.
+
+`check_pb.py` wraps a script in the `MyGridProgram` shape and compiles it with
+`csc` against `se_stubs.cs`, hand-written shapes for the PB API (12 types were
+enough to start; a few more were added as the compiler named them).
+
+Proven against both historical failures, as fixtures:
+
+    bug_cs0136    -> CS0136 reported at the exact source line   (v2.4.33)
+    bug_whitelist -> Comparison<T> reported by the name screen  (v2.4.3)
+
+and all three repo scripts compile clean.
+
+THREE FAULTS IN THE CHECKER ITSELF, found while building it, each of which would
+have made it worthless or misleading:
+
+1. `-langversion:6` is invalid for csc 4.8, so the compile aborted with CS1617
+   before compiling anything - and the error parser only matched errors carrying
+   a `file(line,col)` prefix, so the run printed **OK**. A checker that reports
+   success when it did not compile is worse than no checker. Any unprefixed
+   error line, and any non-zero exit with nothing parsed, is now reported as
+   INCONCLUSIVE with a distinct exit code.
+2. The wrapper class was named `__PBScript`. The script declares
+   `public Program()`, which is only a constructor if the class is named
+   `Program`; otherwise it is a method with no return type, so every script
+   checked reported a phantom CS1520.
+3. `MyFixedPoint` had no arithmetic operators and `ContentType` was typed as a
+   string, producing a wall of phantom CS0019/CS0103 that buried the one real
+   error.
+
+WHAT IT STILL DOES NOT CATCH: behaviour, and any API shape `se_stubs.cs` gets
+wrong. Unknown-type and unknown-member errors are listed separately as probable
+stub gaps - add the member to the stubs, do not change the script.
+
 ## 2.4.33
 
 Source 137,328 -> 139,341 (artifact 94,872; 5,128 headroom). Recipes 38 -> 38.

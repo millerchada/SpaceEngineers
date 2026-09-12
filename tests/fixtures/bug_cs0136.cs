@@ -2310,7 +2310,7 @@ string CanonicalizeStock(MyIni ini, string text) {
     // Named rawVal, not raw: "raw" is taken by the line array further down this same method,
     // and C# refuses a method-scope local that collides with an earlier block-scope local even
     // when the method-scope declaration appears later in the text. Cost an in-game compile.
-    string rawVal = ini.Get("Stock", n).ToString("");
+    string raw = ini.Get("Stock", n).ToString("");
     string c = Canon(n);
     bool known = _items.ContainsKey(c);
     // RE-SPELL a known key to its canonical alias, so "Computer=500" is rewritten as
@@ -2322,7 +2322,7 @@ string CanonicalizeStock(MyIni ini, string text) {
     // keeps this pass idempotent - a collision emits the same text every cycle forever.
     string name = (known && !_stockCollide.Contains(c)) ? c : n;
     if (val.ContainsKey(name)) continue; // already emitted under this name
-    val[name] = rawVal;
+    val[name] = raw;
     // Sort a KNOWN key by its canonical alias, an unknown one by its own name, so user keys
     // interleave alphabetically with managed ones instead of being clumped at the end.
     ord[name] = known ? c : name;
