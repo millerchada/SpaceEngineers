@@ -28,6 +28,58 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.29
+
+Source 127,764 -> 128,695 (artifact 91,331; 8,669 headroom). Recipes 37 -> 37,
+ItemDefs unchanged, seeding implementation unchanged.
+
+`BuildStockText` iterated `_recipes`. That was the last surviving instance of
+the conflation v2.4.27 set out to remove: the LCD answered "can IOPM build
+this" when the question on screen is "what am I stocking".
+
+Proven live on the production server rather than argued:
+
+    IOPM.Production.StockItems  = 45
+    IOPM.StockDisplay.Rows      = 37
+
+The eight recipe-less products were physically counted, held `LastPlan`
+records, and were still invisible on the panel.
+
+### The fix
+
+    - foreach (var kv in _recipes) {
+    + foreach (var kv in _cfg.StockTargets) {
+
+`_cfg.StockTargets` is the SAME dictionary `[IOPM.Production] StockItems`
+counts, so `Rows` and `StockItems` are now equal BY CONSTRUCTION and cannot
+drift apart again. The fix is structural, not a second list kept in sync.
+
+A consequence worth stating: a key the player adds by hand now appears on the
+panel even when IOPM cannot manufacture it. That is correct. The panel reports
+what is being stocked, and a quota with no way to reach it is exactly the thing
+worth seeing.
+
+`row.Quota` also drops its redundant `ContainsKey` + indexer lookup and reads
+`kv.Value` directly, which is the same value by definition.
+
+### Unchanged
+
+Planning, queue behaviour, recipes, sorting, docking and the StockConfigurable
+seeding implementation are untouched - the functional diff is three lines, one
+of them the version constant. Pagination is untouched and still driven by
+`rows.Count`, so 45 rows paginate exactly as 37 did: one page when
+`StockRowsPerPage` is 0 or >= the row count, otherwise ceil(total/per) pages
+advancing one page per rendered cycle.
+
+### Known, deliberately not fixed here
+
+`RenderStockScreens` returns early when no screen carries `[IOPM-Stock]`, which
+leaves `_stockRowCount` holding its last value instead of 0. That is the same
+stale-diagnostic family as 2.4.14 and 2.4.24, and it violates the rule recorded
+in 2.4.24 that a skipped phase owes its diagnostics a reset on the skip path.
+It is invisible on the current base, which has one stock screen, and fixing it
+was outside the narrow scope of this version. Worth doing in its own change.
+
 ## 2.4.28
 
 Source 126,765 -> 127,764 (artifact 91,381; 8,619 headroom). Managed recipe set

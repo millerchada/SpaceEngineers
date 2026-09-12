@@ -416,6 +416,11 @@ including a key you wrote under an alias (`Computer=500` correctly marks
 A target of `0` means "track it, never manufacture it". Delete a row and it
 comes back at `0` on the next cycle; set it to a number to give it a floor.
 
+Everything in `[Stock]` appears on the `[IOPM-Stock]` LCD (2.4.29+), including
+items IOPM cannot manufacture and keys you added by hand. `[IOPM.StockDisplay]
+Rows` and `[IOPM.Production] StockItems` read the same dictionary, so they
+always agree — if they ever disagree, something is genuinely wrong.
+
 ### What is stock-configurable, and what is not
 
 | | Auto-listed? | Why |
