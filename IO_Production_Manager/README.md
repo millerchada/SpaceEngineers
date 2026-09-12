@@ -484,8 +484,24 @@ for this"* and *"can IOPM make this"* are different questions. Setting a
 non-zero target on an item with no recipe is safe and reports `RawShortage`,
 which correctly reads as "supply this yourself."
 
-As of 2.4.35 **every** stock-configurable product has a validated recipe — 45
-products, 45 recipes, nothing pending. The last eight were promoted one evidence
+**Counting roots does not prove the catalog is complete.** "45 products / 45
+recipes / 0 pending" only says every stock ROOT has a recipe; it says nothing
+about the dependencies beneath them. Canvas shipped with a recipe in 2.4.35 and
+was unbuildable on arrival because `SyntheticFabric` had none. Run
+`python tests/audit_closure.py <source.cs>` — it walks the graph and classifies
+every leaf as TERMINAL_RAW, MANUFACTURED_MISSING_RECIPE or UNKNOWN.
+
+**An ItemDef is not evidence that something is terminal.** `Gunpowder` carries
+an Ingot TypeId and would pass any "ingots are refinery output" heuristic, yet
+it is crafted in a Munitions Factory. TypeId says where an item is *sorted*, not
+whether it can be *made*.
+
+Currently one hole remains: `Gunpowder` (`Ingot/Magnesium`, referenced by
+`Explosives`) is manufactured but has no recipe, so `Explosives` is blocked in
+practice.
+
+As of 2.4.35 every stock-configurable product has a validated recipe — 45
+products, 46 recipes. The last eight were promoted one evidence
 batch at a time: `ArmoredPlate` (2.4.30); `Capacitor`, `Girder`,
 `RadioCommunication`, `SolarCell` (2.4.34); `Concrete`, `Explosives`, `Canvas`
 (2.4.35).

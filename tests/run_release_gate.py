@@ -62,7 +62,25 @@ def main():
         print(out)
 
     print()
-    print('3. TRANSFORM VERIFICATION - build_pb.py')
+    print('3. CATALOG + CLOSURE AUDITS')
+    rc, out = run(['tests/audit_catalog.py', target])
+    print('   catalog integrity : %s' % ('PASS' if rc == 0 else 'FAIL'))
+    if rc != 0:
+        failures.append('catalog audit failed')
+        print(out)
+    # Closure is reported but NOT fatal: a manufactured dependency with no recipe is a real
+    # hole, yet it does not make the build unsafe to deploy - the affected root simply reports
+    # Blocked. Surfacing it every build is the point; blocking the deploy would mean a known,
+    # documented gap stops unrelated fixes from shipping.
+    rc, out = run(['tests/audit_closure.py', target])
+    tail = [l for l in out.splitlines() if l.startswith('CLOSURE')]
+    print('   dependency closure: %s' % (tail[0] if tail else 'no verdict'))
+    for line in out.splitlines():
+        if line.startswith('MANUFACTURED_MISSING_RECIPE (') or line.startswith('UNKNOWN ('):
+            print('     ' + line)
+
+    print()
+    print('4. TRANSFORM VERIFICATION - build_pb.py')
     rc, out = run(['build_pb.py', target])
     ok = rc == 0 and 'verification passed' in out
     print('   %s : %s' % (os.path.basename(target), 'PASS' if ok else 'FAIL'))

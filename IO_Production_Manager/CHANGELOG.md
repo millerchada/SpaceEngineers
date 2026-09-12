@@ -28,6 +28,78 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.36 — closure audit; the "complete catalog" claim was wrong
+
+Artifact 86,732; headroom 13,268. Managed recipes 45 -> 46.
+
+### The flawed definition
+
+v2.4.35 reported "45 stock-configurable products / 45 recipes / 0 recipe-pending"
+and called the catalog complete. THAT COUNT ONLY PROVED EVERY STOCK ROOT HAD A
+RECIPE. It said nothing about the dependencies beneath those roots, and a root
+whose ingredient has no recipe is still unbuildable - the planner reports
+`RawShortage` on the ingredient and the root sits `Blocked` forever.
+
+Canvas was the proof: shipped with a recipe in v2.4.35, and unbuildable on
+arrival, because `SyntheticFabric` had an ItemDef and no recipe. Gunpowder is a
+second, independent instance that the same count also missed.
+
+### tests/audit_closure.py
+
+Walks every ingredient of every recipe transitively from the stock roots and
+classifies each LEAF - an ingredient with no active recipe:
+
+    TERMINAL_RAW                 intentionally outside production control
+    MANUFACTURED_MISSING_RECIPE  craftable, recipe not implemented - a real hole
+    UNKNOWN                      insufficient evidence; resolve by observation
+
+HAVING AN ItemDef DOES NOT MAKE SOMETHING TERMINAL, and that is the whole point.
+Gunpowder carries an INGOT TypeId and would pass any "is it an ingot, therefore
+refinery output" heuristic - yet it is crafted in a Munitions Factory. TypeId
+describes where an item is SORTED, not whether it can be MADE. Classification
+therefore reads positive evidence and falls back to UNKNOWN rather than guessing.
+
+### Two faults in the audit itself, both found by disbelieving its output
+
+Both made it UNDER-report, which is the dangerous direction for a completeness
+check:
+
+1. `AddBlueprintGroup` keys through `Canon()` at runtime, so `Fabric=Fabric` is
+   stored under the alias `SyntheticFabric`. The audit parsed the raw key and so
+   found no blueprint.
+2. `_aliases` is populated from TWO places - `AddAliasGroup`, and `AddItem`
+   registering each ItemDef's bare SubtypeId. The audit modelled only the first,
+   so nothing connected the name `Fabric` to the alias `SyntheticFabric`.
+
+With both fixed, SyntheticFabric reclassified from UNKNOWN to
+MANUFACTURED_MISSING_RECIPE - which is what it always was.
+
+### Closure before and after
+
+    v2.4.35   18 leaves   16 TERMINAL_RAW   2 MISSING (Gunpowder, SyntheticFabric)   0 UNKNOWN
+    v2.4.36   17 leaves   16 TERMINAL_RAW   1 MISSING (Gunpowder)                    0 UNKNOWN
+
+Added: `SyntheticFabric | 1 | Assembler | Plastic:2`. Machine token unverified -
+a PREFERENCE that orders already-eligible machines, with `CanUseBlueprint`
+deciding eligibility. The Auto Loom that makes Canvas is a plausible producer of
+the fabric too, but plausible is not observed, so it is not named.
+
+### STILL OPEN - the catalog is NOT complete
+
+    Gunpowder   MyObjectBuilder_Ingot/Magnesium   referenced by Explosives
+                crafted by Munitions Factory (Large)   MANUFACTURED_MISSING_RECIPE
+
+The machine is known; the INGREDIENT LIST has never been captured. Until it is,
+`Explosives` is queueable in principle and blocked in practice. This is the one
+remaining hole and it is recorded here rather than rounded away.
+
+### Gate
+
+Both audits now run in `tests/run_release_gate.py`. Catalog integrity is FATAL.
+Closure is REPORTED BUT NOT FATAL: a known, documented dependency gap should not
+stop unrelated fixes from shipping, and the affected root degrades to `Blocked`
+rather than misbehaving. Surfacing it on every build is the point.
+
 ## 2.4.35 — the recipe-pending set is empty
 
 Artifact 86,691; headroom 13,309. Managed recipes 42 -> 45.
