@@ -28,6 +28,87 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.34
+
+Source 139,630 -> 143,171 (artifact 86,505; 13,495 headroom).
+Managed recipe set 38 -> 42. `[Stock]` unchanged at 45.
+
+Four of the seven recipe-pending products promoted on live IO 1.7.7 evidence:
+
+    Capacitor          | 1 | Assembler | Rubber:1, AluminumIngot:1, Ceramic:1
+    Girder             | 1 | Assembler | IronIngot:2
+    RadioCommunication | 1 | Assembler | SmallSteelTube:6, CopperWire:12
+    SolarCell          | 1 | Assembler | Glass:1, CopperWire:1, SiliconWafer:5, IronIngot:2
+
+Nothing new was added to make these queueable. Every blueprint id was already in
+the table (`Capacitor`, `POGirderComponent`, `PORadioCommunicationComponent`,
+`POSolarCell`) and no alternate alias was created. `SolarCell` uses the existing
+`SiliconWafer` alias for `MyObjectBuilder_Ingot/Silicon` rather than introducing
+a second name for the same item. Verified: every ingredient across all 42
+recipes resolves to an existing ItemDef or alias.
+
+YIELD 1 for all four - ordinary single-result components with no evidence of a
+multi-output recipe. `Lightbulb|10` is not a precedent to generalise from; it is
+a measured non-unity yield (30 Lightbulbs consumed exactly 3 Glass, UAT-proven).
+
+MACHINE TOKEN: the producing machine was not observed for any of the four, so
+the generic `Assembler` token is used. That is a PREFERENCE, not a gate - it
+orders machines already eligible, and eligibility comes from
+`CanUseBlueprint()`. A machine the token does not name still receives the job
+when it is the only one that can build it, since `MachineRank` falls back to
+5000 for everything unmatched. A wrong preference costs ordering, never
+correctness.
+
+### THREE REMAIN PENDING, and not for want of recipe knowledge
+
+    Concrete    Gravel:25
+    Explosives  IronIngot:1, Gunpowder:4
+    Canvas      SyntheticFabric:10
+
+The RECIPES are known. What is missing is the physical identity of `Gravel`,
+`Gunpowder` and `SyntheticFabric` - no `TypeId/SubtypeId` for any of them exists
+anywhere in this repo. The changelog already records "Gravel unknown" from the
+deferred ejector design, and greps for Gunpowder and SyntheticFabric return
+nothing at all.
+
+A guessed identity fails SILENTLY, which is why these were not added anyway.
+A wrong INGREDIENT subtype is less destructive than the wrong OUTPUT subtype
+that cost ~129k surplus BulletproofGlass in v2.3.4 - it under-produces rather
+than over-produces - but it still leaves the parent permanently `Blocked` with
+nothing explaining why, and no warning fires because routing keys on TypeId.
+
+RESOLUTION IS ONE TOOL RUN, NOT A SCREENSHOT: run `IO_Item_Identity_Dump` on a
+scratch PB. It prints the exact `TypeId/SubtypeId` for every item physically
+present. With those three lines the recipes are a one-line change each, exactly
+like the four above. `SiliconWafer` resolving cleanly to `Ingot/Silicon` is the
+worked example of why this matters - it was already known, so `SolarCell` needed
+no new identity at all.
+
+### Also in this release
+
+`build_pb.py` now pins UTF-8 for reads and writes. Sources contain non-ASCII
+(em dashes in comments) and were written as UTF-8, but the locale default here
+is cp1252, so an unpinned read decoded them differently from `check_pb.py`,
+which always reads UTF-8. Harmless today only because comments never reach the
+artifact - pinned so it stays that way rather than depending on it. Found while
+cross-checking literal integrity by hand; the mismatch first showed up as a
+false "literals differ" result from the ad-hoc check, not from the build.
+
+### Release gate
+
+    canonical-stock tests (52)                    PASS
+    compile negative controls (CS0136, whitelist) PASS
+    corrected-source positive compile             PASS
+    minifier round-trip (inverse == original)     PASS
+    transformed artifact compiles                 PASS
+    literal integrity 639 -> 639 identical        PASS
+    structure counts identical                    PASS
+    single AddQueueItem call site                 PASS
+    no ClearQueue / Remove / Move                 PASS
+    BlueprintReverseMap still iterates ALL ItemDefs so manual queues are
+      recognised, including for the three still-pending products  PASS
+    size 86,505 / 100,000, headroom 13,495        PASS
+
 ## Size-reclamation pass (no version bump - behaviour is byte-identical)
 
     artifact 94,878 -> 86,287     headroom 5,122 -> 13,713

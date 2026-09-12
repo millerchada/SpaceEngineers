@@ -485,11 +485,19 @@ non-zero target on an item with no recipe is safe and reports `RawShortage`,
 which correctly reads as "supply this yourself."
 
 As of 2.4.28 every live-observed manufactured component is a native ItemDef, so
-`[Stock]` lists all 44 of them. Seven carry no validated recipe yet — `Canvas`,
-`Capacitor`, `Concrete`, `Explosives`, `Girder`, `RadioCommunication`,
-`SolarCell` — and are listed anyway. (`ArmoredPlate` was the eighth until
-2.4.30, when its IO 1.7.7 recipe was validated; its `[Stock]` entry did not
-change, which is the point.)
+`[Stock]` lists all 44 of them. **Three** carry no validated recipe yet —
+`Canvas`, `Concrete` and `Explosives` — and are listed anyway.
+
+Those three are not blocked on recipe knowledge. Their recipes are known
+(`Concrete` needs Gravel 25, `Explosives` IronIngot 1 + Gunpowder 4, `Canvas`
+SyntheticFabric 10); what is missing is the physical `TypeId/SubtypeId` of
+**Gravel, Gunpowder and SyntheticFabric**, which appear nowhere in this repo.
+Run `IO_Item_Identity_Dump` on a scratch PB to resolve them — a guessed subtype
+fails silently, leaving the item permanently `Blocked` with no warning.
+
+`ArmoredPlate` (2.4.30) and `Capacitor`, `Girder`, `RadioCommunication`,
+`SolarCell` (2.4.34) were all promoted this way: identity first, recipe later,
+with the `[Stock]` entry never depending on either.
 
 To make a further item stock-configurable, promote it to an ItemDef in
 `AddItemGroup("MyObjectBuilder_Component", ...)`. Being a loadout alias is

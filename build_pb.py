@@ -33,6 +33,7 @@ import subprocess
 import sys
 
 import minify_names
+import io
 import os
 
 
@@ -129,7 +130,12 @@ def main():
     if len(sys.argv) != 2:
         raise SystemExit(__doc__)
     src_path = sys.argv[1]
-    with open(src_path, 'r') as f:
+    # ENCODING IS PINNED. Sources contain non-ASCII (em dashes in comments) and were
+    # written as UTF-8, but the locale default here is cp1252 - so an unpinned read
+    # decodes them differently from check_pb.py, which always reads UTF-8. Today that is
+    # harmless only because comments never reach the artifact; pin both so it stays that
+    # way rather than depending on it.
+    with io.open(src_path, 'r', encoding='utf-8') as f:
         src = f.read()
 
     out, src_lits, src_struct = scan(src)
@@ -182,7 +188,7 @@ def main():
 
     base, ext = os.path.splitext(src_path)
     dst = base + '.min' + ext
-    with open(dst, 'w') as f:
+    with io.open(dst, 'w', encoding='utf-8', newline='') as f:
         f.write(out)
 
     # --- COMPILE GATE ----------------------------------------------------------
