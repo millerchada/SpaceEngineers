@@ -1,4 +1,4 @@
-# Faithful port of DetectStockCollisions + CanonicalizeStock from IOPM v2.4.32, run against
+# Faithful port of GroupStockKeys, LoadConfig's [Stock] loop and CanonicalizeStock, v2.4.33, run against
 # the live Custom Data plus adversarial inputs. Mirrors the C# closely enough that passing here
 # is real evidence about the shipped logic. Run: python tests_canonicalize_stock.py
 import io
@@ -115,6 +115,44 @@ def seed(keys):
     return out
 
 
+def load_config(stock_keys):
+    """Port of LoadConfig's [Stock] loop in v2.4.33. Returns (StockTargets, errors).
+
+    FAIL-CLOSED: an alias whose group holds more than one source key gets NO entry,
+    so a conflicting quota can never become an active one."""
+    errors = []
+    for n, _ in stock_keys:
+        if n is not None and not known(n):
+            errors.append('Unknown [Stock] item: ' + n)
+    groups, order = {}, []
+    for n, v in stock_keys:
+        if n is None or not known(n):
+            continue
+        c = canon(n)
+        if c.lower() not in groups:
+            groups[c.lower()] = (c, [])
+            order.append(c.lower())
+        groups[c.lower()][1].append((n, v))
+    order.sort(key=lambda k: groups[k][0].lower())
+    targets = {}
+    for k in order:
+        c, g = groups[k]
+        g.sort(key=lambda x: x[0].lower())
+        if len(g) > 1:
+            errors.append('[Stock] alias collision on %s: %s all mean %s'
+                          % (c, ', '.join(n for n, _ in g), c))
+            continue          # NO entry - never pick one value by iteration order
+        try:
+            val = float(g[0][1])
+            if val < 0:
+                raise ValueError
+        except ValueError:
+            errors.append('Invalid stock target: ' + g[0][0])
+            continue
+        targets[c] = val
+    return targets, errors
+
+
 def cycle(text):
     keys = seed(parse_stock(text))
     collide, msgs = detect_collisions(keys)
@@ -226,6 +264,53 @@ check('existing value kept while seeding', dict(parse_stock(m1s))['SteelPlate'] 
 LAST = LIVE.split('[IOPM.Status]')[0].rstrip() + '\n'
 l1, _ = cycle(LAST)
 check('[Stock] as final section idempotent', l1 == cycle(l1)[0])
+
+print()
+print('=' * 68)
+print('FAIL-CLOSED AT CONFIG LOAD (v2.4.33): a collision must never become a quota')
+
+
+def collision_case(label, extra_line, expected):
+    print('  -- ' + label)
+    txt = LIVE.replace('[Stock]\n', '[Stock]\n' + extra_line)
+    targets, errors = load_config(seed(parse_stock(txt)))
+    check('BasicComputer has NO active quota', 'BasicComputer' not in targets)
+    check('collision reported exactly once',
+          len([e for e in errors if 'collision on BasicComputer' in e]) == 1)
+    check('unrelated quotas unaffected (SteelPlate=10000)',
+          targets.get('SteelPlate') == 10000.0)
+    out, _ = cycle(txt)
+    ks = dict(parse_stock(out))
+    check('all conflicting source keys preserved verbatim',
+          all(ks.get(k) == v for k, v in expected.items()))
+    check('text pass still idempotent', out == cycle(out)[0])
+    seeded = [k for k, _ in seed(parse_stock(out))]
+    check('seeding adds NO extra key for the collided alias',
+          sum(1 for k in seeded if canon(k) == 'BasicComputer') == len(expected))
+    return targets
+
+
+t1 = collision_case('DIFFERENT values: Computer=500 vs BasicComputer=1000',
+                    'Computer=500\n',
+                    {'Computer': '500', 'BasicComputer': '1000'})
+t2 = collision_case('EQUAL values: Computer=1000 vs BasicComputer=1000',
+                    'Computer=1000\n',
+                    {'Computer': '1000', 'BasicComputer': '1000'})
+check('equal-value collision refused exactly like the unequal one',
+      'BasicComputer' not in t1 and 'BasicComputer' not in t2)
+
+print('  -- regression guard: no collision means the quota still applies')
+bt, be = load_config(seed(parse_stock(LIVE)))
+check('clean config yields 45 active quotas', len(bt) == 45)
+check('clean config reports no collision', not [e for e in be if 'collision' in e])
+check('BasicComputer quota applies normally when alone', bt.get('BasicComputer') == 1000.0)
+
+print('  -- iteration order cannot change the outcome')
+rev = LIVE.replace('[Stock]\n', '[Stock]\nComputer=500\n')
+fwd_t, fwd_e = load_config(seed(parse_stock(rev)))
+back_t, back_e = load_config(list(reversed(seed(parse_stock(rev)))))
+check('same targets regardless of key order', fwd_t == back_t)
+check('same errors regardless of key order', sorted(fwd_e) == sorted(back_e))
 
 print()
 if FAILURES:

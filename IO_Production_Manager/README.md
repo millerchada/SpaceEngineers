@@ -453,9 +453,15 @@ own items there safely.
 
 **If two keys mean the same item** — say `Computer=500` and
 `BasicComputer=1000` — IOPM will **not** merge them, because that would throw
-away one of your numbers. Both are kept exactly as written and the conflict is
-reported under `[IOPM.ConfigError.*]`. Delete whichever you do not want; until
-you do, load order decides which value applies.
+away one of your numbers, and it will **not** apply either one. The alias gets
+no quota at all until you resolve it: it stops being a planner target, drops
+out of `StockItems`, and disappears from the LCD. Both keys are kept exactly as
+written and the conflict is reported under `[IOPM.ConfigError.*]`. Delete
+whichever you do not want.
+
+This holds even when the two values are **equal** (2.4.33+). The rule is about
+the conflict, not the numbers — otherwise the same config would be valid or
+invalid depending on a value you were about to change.
 
 Everything in `[Stock]` appears on the `[IOPM-Stock]` LCD (2.4.29+), including
 items IOPM cannot manufacture and keys you added by hand. `[IOPM.StockDisplay]

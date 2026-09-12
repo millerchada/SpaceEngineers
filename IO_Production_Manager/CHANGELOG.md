@@ -28,6 +28,79 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.33
+
+Source 137,328 -> 139,341 (artifact 94,872; 5,128 headroom). Recipes 38 -> 38.
+
+v2.4.32 protected the TEXT but not the PARSE. `CanonicalizeStock` kept both
+conflicting lines and warned, while `LoadConfig` still did:
+
+    string alias = Canon(rawName);
+    ...
+    c.StockTargets[alias] = value;   // last GetKeys() iteration wins
+
+So `Computer=500` alongside `BasicComputer=2000` still collapsed into ONE
+active quota, chosen by dictionary iteration order - a number the player never
+picked, driving real production, while the diagnostics said the conflict was
+unresolved. The warning was true and the behaviour was not.
+
+### Fail-closed
+
+A colliding alias now gets NO entry in `StockTargets` at all. It is not a
+planner root, generates no demand, is not counted in `StockItems`, and does not
+appear on the LCD. A conflicting quota is not a quota. All source keys stay in
+the file verbatim and the conflict is reported:
+
+    [Stock] alias collision on BasicComputer: BasicComputer, Computer all mean
+    BasicComputer. NO quota is applied for BasicComputer until this is
+    resolved - all keys are kept verbatim and none renamed. Delete whichever
+    you do not want.
+
+EQUAL VALUES COLLIDE IDENTICALLY. `Computer=500` with `BasicComputer=500` is
+refused too. The rule is about the conflict, not the numbers: accepting equal
+values would make the same configuration valid or invalid depending on a value
+the player may be about to edit, and would leave a latent trap that only fires
+later. Explicitly tested.
+
+Seeding is unaffected and was already correct - `EnsureStockAliasesPresent`
+tests presence against the `[Stock]` KEYS, not against `StockTargets`, so a
+collided alias still counts as present and no extra key is stacked on top of
+the conflict. Also explicitly tested.
+
+### One grouping, two consumers
+
+`GroupStockKeys` and `StockCollisionMessage` are now shared by `LoadConfig` and
+`DetectStockCollisions`. Two independent implementations could have disagreed
+about what counts as a collision - one failing closed while the other renamed -
+which is the worst of both. Both are pure functions of the key SET: groups and
+their contents are sorted, so no result depends on iteration order anywhere.
+
+Detection stays in BOTH places deliberately, rather than being computed once in
+`LoadConfig` and reused. The text pass must judge the ini it is ABOUT TO
+REWRITE: config applies only at Idle, so a collision created by a mid-cycle
+hand edit would not yet be in `_cfg`, and a text pass trusting a stale set
+would rename the new key and collapse the pair - destroying the value in the
+same cycle it was typed.
+
+### Tests
+
+`tests_canonicalize_stock.py` gains a model of `LoadConfig`'s `[Stock]` loop
+and 20 new checks. Full suite now 52, all passing:
+
+    DIFFERENT values (Computer=500 vs BasicComputer=1000)
+      no active quota, reported once, unrelated quotas unaffected,
+      both source keys verbatim, text pass idempotent, no extra key seeded
+    EQUAL values (Computer=1000 vs BasicComputer=1000)
+      identical outcome - refused, not quietly accepted
+    regression guard
+      clean config still yields 45 active quotas, no collision reported,
+      BasicComputer applies normally at 1000 when it is alone
+    iteration order
+      same targets and same errors with the key list reversed
+
+The reversed-key-order check is the direct regression test for the original
+defect: under the old code it would have produced a different quota.
+
 ## 2.4.32
 
 Source 133,535 -> 137,328 (artifact 94,256; **5,744 headroom** - see the note at
