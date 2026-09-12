@@ -28,6 +28,94 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.35 — the recipe-pending set is empty
+
+Artifact 86,691; headroom 13,309. Managed recipes 42 -> 45.
+Stock-configurable products 45, unchanged. Recipe-pending 3 -> **0**.
+
+    Concrete   | 1 | Assembler                           | Gravel:25
+    Explosives | 1 | Assembler                           | IronIngot:1, Gunpowder:4
+    Canvas     | 1 | Auto Loom;Mod Compatibility Assembler| SyntheticFabric:10
+
+Canvas is the game's Parachute recipe, and its machine token is the ONLY one in
+the whole catalog backed by direct observation of the producing blocks rather
+than inference - so it names both. Output 1 for all three: nothing in the repo
+or the tests ever established a non-unity yield, and inventory stack size is not
+evidence of yield.
+
+### The dependency identities
+
+    Gravel          -> MyObjectBuilder_Ingot/Stone
+    Gunpowder       -> MyObjectBuilder_Ingot/Magnesium
+    SyntheticFabric -> MyObjectBuilder_Component/Fabric
+
+GUNPOWDER IS WORTH REMEMBERING. Industrial Overhaul reuses the VANILLA Magnesium
+subtype for the item the UI calls Gunpowder. That is why searching a dump for
+"Gunpowder" returned nothing while the ingot warehouse visibly held a large
+stack - the dump reported `MyObjectBuilder_Ingot/Magnesium=196,886`. An item's
+display name, its alias and its SubtypeId are three different things, and this
+is the first case in the project where the mod's own UI name and the engine
+subtype disagree outright.
+
+All three are recipe INPUTS, not products, so they are declared
+`stockConfigurable=false` and `[Stock]` stays at 45. The ingot pair rides the
+existing ingot group, which is already false; SyntheticFabric needs its own call
+because the component group is `true` and would have pushed `[Stock]` to 46.
+
+ONE ALIAS PER IDENTITY. `Magnesium` already existed as a LOADOUT alias from
+v2.4.26. Rather than leave two independent names for one physical identity, the
+bare `Magnesium=Magnesium` loadout entry was removed: `AddItem` registers the
+bare SubtypeId automatically, so a loadout line `Magnesium` still resolves
+through `Canon -> Gunpowder -> MyObjectBuilder_Ingot/Magnesium`. `_typeAlias`
+therefore maps the identity to exactly one alias and `ScanQueues` / `_onHand`
+attribution stays deterministic.
+
+ORDERING DEPENDENCY, easy to break later: the `SyntheticFabric=Fabric` ItemDef
+must be declared BEFORE `AddBlueprintGroup`. The knowledge table's existing
+`Fabric=Fabric` entry is keyed through `Canon`, so with the ItemDef in place
+first the blueprint re-keys itself onto `SyntheticFabric` - which is what lets
+`BlueprintReverseMap` attribute a MANUALLY queued Fabric. Moving that call after
+the blueprint groups would break it silently. No new blueprint id was added.
+
+### tests/audit_catalog.py
+
+New. Checks what no compiler can see: every ingredient resolves, every recipe
+output is an ItemDef, no alias declared twice, and - the one that matters here -
+**raw physical identity -> alias is ONE-TO-ONE**, because two aliases for one
+`TypeId/SubtypeId` would make `_onHand` crediting and `ScanQueues` attribution
+depend on declaration order.
+
+It caught something on its first run, though not a defect: seven loadout aliases
+pointing at identities ItemDefs already own. Sharpening the check separated two
+different things -
+
+  - `Detector` and `BulletproofGlass` are BARE SUBTYPES of identities ItemDefs
+    own (SensorCluster, Glass) and were registered as aliases twice over, once
+    automatically by `AddItem` and once explicitly in `AddAliasGroup`. Dead
+    weight, removed, same reasoning as Magnesium.
+  - `RadioCommComponent`, `ReactorComponent`, `ThrustComponent`,
+    `GravityGenComponent`, `DetectorComponent` are ALTERNATE SPELLINGS that
+    cannot be derived from a subtype. They earn their place and are kept.
+
+Neither kind ever affected attribution - `AddLoadAlias` does not populate
+`_typeAlias`. The first version of the check conflated "a second name usable in
+a loadout" with "a second alias for attribution", which would have left a
+permanently red check, and a check that is always red teaches people to ignore
+it.
+
+### Full gate
+
+    catalog integrity (6 invariants)              PASS
+    stock-configurable 45 / recipes 45 / pending 0
+    canonical-stock tests (52)                    PASS
+    compile negative controls (CS0136, whitelist) PASS
+    positive compile                              PASS
+    minifier round-trip (inverse == original)     PASS
+    artifact compiles                             PASS
+    literal + structure integrity                 PASS
+    single AddQueueItem site, no Clear/Remove/Move PASS
+    86,691 / 100,000, headroom 13,309
+
 ## 2.4.34
 
 Source 139,630 -> 143,171 (artifact 86,505; 13,495 headroom).

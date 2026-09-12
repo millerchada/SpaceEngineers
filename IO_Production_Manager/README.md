@@ -484,20 +484,24 @@ for this"* and *"can IOPM make this"* are different questions. Setting a
 non-zero target on an item with no recipe is safe and reports `RawShortage`,
 which correctly reads as "supply this yourself."
 
-As of 2.4.28 every live-observed manufactured component is a native ItemDef, so
-`[Stock]` lists all 44 of them. **Three** carry no validated recipe yet —
-`Canvas`, `Concrete` and `Explosives` — and are listed anyway.
+As of 2.4.35 **every** stock-configurable product has a validated recipe — 45
+products, 45 recipes, nothing pending. The last eight were promoted one evidence
+batch at a time: `ArmoredPlate` (2.4.30); `Capacitor`, `Girder`,
+`RadioCommunication`, `SolarCell` (2.4.34); `Concrete`, `Explosives`, `Canvas`
+(2.4.35).
 
-Those three are not blocked on recipe knowledge. Their recipes are known
-(`Concrete` needs Gravel 25, `Explosives` IronIngot 1 + Gunpowder 4, `Canvas`
-SyntheticFabric 10); what is missing is the physical `TypeId/SubtypeId` of
-**Gravel, Gunpowder and SyntheticFabric**, which appear nowhere in this repo.
-Run `IO_Item_Identity_Dump` on a scratch PB to resolve them — a guessed subtype
-fails silently, leaving the item permanently `Blocked` with no warning.
+**That does not merge the two ideas.** `StockConfigurable` and `_recipes` remain
+independent, and the next product added will be identity-first again — listed in
+`[Stock]` at `0`, reporting `RawShortage` if you set a target, until its recipe
+is validated. The counts matching today is a coincidence of progress, not an
+invariant. See "A recipe never answers *is this a stock item*" below.
 
-`ArmoredPlate` (2.4.30) and `Capacitor`, `Girder`, `RadioCommunication`,
-`SolarCell` (2.4.34) were all promoted this way: identity first, recipe later,
-with the `[Stock]` entry never depending on either.
+### Display name ≠ alias ≠ SubtypeId
+
+`Gunpowder` is the clearest case in the project: Industrial Overhaul reuses the
+vanilla **Magnesium** subtype for the item its UI calls Gunpowder. A dump search
+for "Gunpowder" finds nothing while the warehouse visibly holds a large stack.
+If an item cannot be found by name, search the dump by quantity instead.
 
 To make a further item stock-configurable, promote it to an ItemDef in
 `AddItemGroup("MyObjectBuilder_Component", ...)`. Being a loadout alias is
