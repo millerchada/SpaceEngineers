@@ -3,13 +3,14 @@
     python IO_Production_Manager/tests/run_release_gate.py \
            IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs
 
-Three things must hold:
+Five things must hold:
 
   1. The checker still DETECTS the two compile errors that historically reached the game.
      A checker that has silently stopped working is worse than none - this project has
      already shipped a version of check_pb.py that printed OK without compiling anything.
   2. The checker passes the script under release.
-  3. build_pb.py's transform verification passes.
+  3. Every tests_*.py suite beside this file passes against the script under release.
+  4. build_pb.py's transform verification passes.
 
 Exit code 0 only if all three hold.
 """
@@ -87,7 +88,28 @@ def main():
             print('     ' + line)
 
     print()
-    print('4. TRANSFORM VERIFICATION - build_pb.py')
+    print('4. UNIT + INVARIANT SUITES')
+    # Every tests_*.py beside this file, discovered rather than listed: a suite that is added
+    # and then forgotten is a suite that proves nothing. Each is handed the release target, so
+    # they test the script under release rather than whatever version they defaulted to.
+    suites = sorted(f for f in os.listdir(TESTS)
+                    if f.startswith('tests_') and f.endswith('.py'))
+    if not suites:
+        failures.append('no tests_*.py suites found - the gate would pass vacuously')
+        print('   NO SUITES FOUND')
+    for f in suites:
+        rc, out = run([os.path.join(TESTS, f), target])
+        verdict = [l for l in out.splitlines()
+                   if 'CHECKS PASSED' in l or 'CHECKS FAILED' in l or 'FAILED' in l]
+        print('   %-28s : %s' % (f, 'PASS' if rc == 0 else 'FAIL'))
+        if verdict:
+            print('     ' + verdict[-1].strip())
+        if rc != 0:
+            failures.append('%s failed' % f)
+            print(out)
+
+    print()
+    print('5. TRANSFORM VERIFICATION - build_pb.py')
     rc, out = run([os.path.join(TOOLS, 'build_pb.py'), target])
     ok = rc == 0 and 'verification passed' in out
     print('   %s : %s' % (os.path.basename(target), 'PASS' if ok else 'FAIL'))

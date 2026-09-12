@@ -1,0 +1,191 @@
+"""Textual invariant gate for an IOPM source, with its own negative controls.
+
+    python IO_Production_Manager/tests/tests_invariants.py \
+           IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs
+
+Some of this project's load-bearing rules are not expressible to a compiler and not reachable
+from a unit test, because they are statements about what the file does NOT contain:
+
+  - AddQueueItem() is the only production-queue mutation that exists
+  - remote/docked inventory never reaches base _onHand
+  - the AlertEvaluation phase is observational - it must not mutate a queue, an inventory, or
+    a native Broadcast Controller setting the player owns
+
+A comment asserting an invariant is not a check. This is the check. It is deliberately crude -
+it reads the source as text - because the alternative, trusting review, is what let a second
+capacity calculation, a silently-picked colliding alias and a wrong yield default all ship in
+earlier versions of this project.
+
+NEGATIVE CONTROLS RUN FIRST, for the same reason run_release_gate.py runs its own first: a
+textual check that has quietly stopped matching anything passes everything. Known-bad mutants
+of the real source are fed through the same rules and must be REJECTED before the real source
+is allowed to pass.
+
+Every rule is "these call sites, and no others". A legitimate new call site means editing this
+file on purpose - the edit is the review.
+"""
+import io
+import os
+import re
+import sys
+
+PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+ALERT_REGION = r'^// ===== ALERTS.*?^// The script owns \[IOPM\.\*\] ONLY'
+
+# The queue and _onHand rules apply to every version of this script. The alert rules cannot
+# apply before the alert subsystem exists, and the release gate is still routinely run against
+# the ACCEPTED release rather than only the candidate - so those rules are gated on the
+# source's own VERSION constant. A source at or above ALERTS_FROM with no alert region is
+# still a hard failure; that is a deleted feature, not an old file.
+ALERTS_FROM = (2, 4, 40)
+
+
+def source_version(src):
+    m = re.search(r'const string VERSION = "([0-9.]+)"', src)
+    return tuple(int(x) for x in m.group(1).split('.')) if m else None
+
+
+def code_lines(src):
+    """Lines that are not pure // comments. Comments describe intent; only code can violate an
+    invariant, and a comment that names a forbidden API - as the file header does - must not
+    read as a violation."""
+    return [l for l in src.split(chr(10)) if l.strip() and not l.strip().startswith('//')]
+
+
+def run(src, report):
+    """Apply every rule. Returns the list of failures. `report` prints, or swallows."""
+    lines = code_lines(src)
+    fails = []
+    n = [0]
+
+    def check(name, ok, detail=''):
+        n[0] += 1
+        report('  %-58s %s' % (name, 'PASS' if ok else 'FAIL'))
+        if not ok:
+            fails.append(name + ((' - ' + detail) if detail else ''))
+
+    def hits(pattern, pool=None):
+        rx = re.compile(pattern)
+        return [t.strip() for t in (lines if pool is None else pool) if rx.search(t)]
+
+    report('-- production queue mutation contract')
+    adds = hits(r'\.AddQueueItem\s*\(')
+    check('AddQueueItem() has exactly one call site', len(adds) == 1, str(adds))
+    for banned in ('ClearQueue', 'RemoveQueueItem', 'MoveQueueItem', 'SwapQueueItem',
+                   'InsertQueueItem'):
+        found = hits(r'\.' + banned + r'\s*\(')
+        check('no %s() anywhere' % banned, not found, str(found))
+    check('the sole AddQueueItem call adds a positive amount',
+          bool(adds) and 'add' in adds[0], str(adds))
+
+    report('-- remote/docked inventory never enters base _onHand')
+    feeds = hits(r'AddTo\(\s*_onHand\s*,')
+    allowed = ('_whStock', '_ovStock', '_moStock')
+    named = re.findall(r'foreach \(var kv in (_\w+)\) AddTo\(_onHand, kv\.Key, kv\.Value\);', src)
+    check('_onHand is fed by exactly 3 statements', len(feeds) == 3, 'found %d' % len(feeds))
+    check('_onHand feeders are _whStock/_ovStock/_moStock only',
+          sorted(named) == sorted(allowed), str(named))
+
+    ver = source_version(src)
+    if ver is not None and ver < ALERTS_FROM:
+        report('-- alert rules: NOT APPLICABLE (v%s predates the alert subsystem)'
+               % '.'.join(map(str, ver)))
+        return fails, n[0]
+
+    report('-- the AlertEvaluation phase is observational')
+    m = re.search(ALERT_REGION, src, re.S | re.M)
+    check('the alert region is present and delimited', m is not None)
+    region = code_lines(m.group(0)) if m else []
+    for banned, why in (
+            (r'AddQueueItem', 'mutates a production queue'),
+            (r'TransferItemTo', 'moves inventory'),
+            (r'\.Enabled\s*=[^=]', 'switches a block on or off'),
+            (r'\.UseAntenna\s*=[^=]', 'overwrites a native Broadcast Controller setting'),
+            (r'\.BroadcastTarget\s*=[^=]', 'overwrites Owner/Faction/Everyone targeting'),
+            (r'\.CustomName\s*=[^=]', 'renames a block'),
+            (r'\.CustomData\s*=[^=]', 'writes Custom Data outside WriteDiagnostics'),
+            (r'\.EnableBroadcasting\s*=[^=]', 'reconfigures an antenna'),
+            (r'\.Radius\s*=[^=]', 'reconfigures an antenna')):
+        found = hits(banned, region)
+        check('alert code never %s' % why, not found, str(found))
+    check('the alert phase calls PoolStats rather than recomputing fill',
+          bool(m) and 'PoolStats(pool, out healthy, out pct)' in m.group(0))
+
+    report('-- the extraction markers tests_alert_engine.py depends on')
+    for name in ('alert-engine', 'alert-transport'):
+        check('marker pair <%s> present' % name,
+              ('// <%s>' % name) in src and ('// </%s>' % name) in src)
+    return fails, n[0]
+
+
+def quiet(*a):
+    pass
+
+
+# Each mutant is a (name, substitution) that breaks exactly one invariant. The rules must
+# reject every one of them; if a mutant passes, the corresponding rule is dead.
+ALERT_MUTANT = 3  # index of the first mutant that edits alert code
+
+MUTANTS = [
+    ('a second AddQueueItem call site',
+     lambda s: s.replace('void WriteDiagnostics() {',
+                         'void WriteDiagnostics() {\n  _mach[0].AddQueueItem(default(MyDefinitionId), (MyFixedPoint)1);', 1)),
+    ('a ClearQueue call',
+     lambda s: s.replace('void WriteDiagnostics() {',
+                         'void WriteDiagnostics() {\n  _mach[0].ClearQueue();', 1)),
+    ('docked stock feeding _onHand',
+     lambda s: s.replace('foreach (var kv in _moStock) AddTo(_onHand, kv.Key, kv.Value);',
+                         'foreach (var kv in _loHave) AddTo(_onHand, kv.Key, kv.Value);', 1)),
+    ('the alert phase overwriting UseAntenna',
+     lambda s: s.replace('    } catch { _bcChat = null; _bcComponent = false; }',
+                         '      ch.UseAntenna = true;\n    } catch { _bcChat = null; _bcComponent = false; }', 1)),
+    ('the alert phase renaming the controller',
+     lambda s: s.replace('void AlertSend(string msg) {',
+                         'void AlertSend(string msg) {\n  _bcBlock.CustomName = "IOPM";', 1)),
+    ('a deleted extraction marker',
+     lambda s: s.replace('// </alert-engine>', '', 1)),
+]
+
+
+def main():
+    if len(sys.argv) != 2:
+        print(__doc__)
+        return 2
+    target = sys.argv[1]
+    src = io.open(target, encoding='utf-8').read()
+    problems = []
+
+    print('=' * 70)
+    print('1. NEGATIVE CONTROLS - each mutant must be REJECTED')
+    ver = source_version(src)
+    mutants = MUTANTS if (ver is None or ver >= ALERTS_FROM) else MUTANTS[:ALERT_MUTANT]
+    for name, mutate in mutants:
+        mutated = mutate(src)
+        if mutated == src:
+            print('   %-52s INCONCLUSIVE' % name)
+            problems.append('mutant "%s" did not apply - it no longer matches the source, so '
+                            'nothing was tested' % name)
+            continue
+        fails, _ = run(mutated, quiet)
+        print('   %-52s %s' % (name, 'rejected' if fails else 'NOT DETECTED'))
+        if not fails:
+            problems.append('mutant "%s" passed every rule - that rule is dead' % name)
+
+    print()
+    print('2. THE REAL SOURCE - %s' % os.path.basename(target))
+    fails, checks = run(src, print)
+    problems += fails
+
+    print()
+    if problems:
+        print('INVARIANT GATE FAILED')
+        for p in problems:
+            print('  - ' + p)
+        return 1
+    print('ALL %d INVARIANT CHECKS PASSED (+%d negative controls)' % (checks, len(mutants)))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

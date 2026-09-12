@@ -28,6 +28,294 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.40 — first-stage alerts: Broadcast Controller transport + capacity state engine
+
+**Gate PASSED. Live UAT NOT RUN — `uat/v2.4.40/plan.md`. v2.4.39 remains the
+accepted runtime release until that file is answered.**
+
+### Scope, exactly
+
+Implemented, and nothing else:
+
+1. Broadcast Controller transport (discovery, component resolution, send)
+2. Alert state-transition engine (Healthy / Warning / Critical)
+3. Cooldown + hysteresis
+4. Warehouse capacity alerts
+5. Overflow capacity alerts
+6. `[IOPM.Alerts]` diagnostics
+7. Test + stub support for the new API surface
+8. README correction — it had been calling v2.4.37 "current" since v2.4.37
+
+### Explicit NON-scope
+
+Deliberately absent, and to stay absent until the transport and the state engine
+have been proven in live play: production-blocked alerts, production-recovered
+alerts, missing-resource alerts, docked-loadout shortage alerts, any
+acquisition / mining advice, ItemDef promotion, unmodelled components,
+production priority work, multi-output Nuclear Reprocessing, IGC remote
+status, Action Relay, `ConfigChangePending` work, Wire Drawer diagnosis, and
+any architectural refactoring.
+
+Also absent by design: **periodic "still critical" reminders**. Not merely
+unimplemented — structurally unreachable. No branch in the state engine emits
+anything because time elapsed.
+
+### API verification findings
+
+The Broadcast Controller API was verified against the **shipped game
+assemblies** (`D:\SteamLibrary\...\SpaceEngineers\Bin64`) by reflection, not
+inferred from terminal properties and not taken from memory.
+
+`Sandbox.Common.dll`, namespace `Sandbox.ModAPI.Ingame`:
+
+    interface IMyChatBroadcastControllerComponent
+      BroadcastTarget BroadcastTarget { get; set; }
+      string          CustomName      { get; set; }
+      bool            UseAntenna      { get; set; }
+      int             MaxMessageCount { get; }
+      string GetMessage(int)      void SetMessage(int, string)
+      void   SendMessage(int)     void SendMessage(string)
+      void   SendGps()            void SendRandomMessage()
+
+    enum BroadcastTarget { Owner, Faction, Everyone }
+
+Three findings worth recording:
+
+- **`IMyBroadcastControllerBlock` is a marker interface.** It declares no
+  members whatsoever — it inherits `IMyFunctionalBlock`/`IMyTerminalBlock` and
+  adds nothing. So the chat surface genuinely cannot be reached from the block
+  interface; going through the entity component is required, not a stylistic
+  choice.
+- **`TryGet<T>` lives on `IMyComponentContainer`, and is unconstrained.**
+  `IMyEntity.Components` is typed
+  `VRage.Game.Components.Interfaces.IMyEntityComponentContainer`, which derives
+  from `IMyComponentContainer`, which declares
+  `bool TryGet<T>(out T component)` with **no** generic constraint. There is no
+  `TryGet` extension method anywhere in the shipped assemblies — a search for
+  public statics taking a component container found only `InitComponents`. So
+  `block.Components.TryGet(out chat)` is the only route.
+- **`SendMessage(string)` returns `void`.** There is no delivery
+  acknowledgement in this API in any form. Send is fire-and-forget, and the
+  script says so everywhere it counts a message.
+
+`IMyRadioAntenna` was verified too: `Radius`, `ShowShipName`, `IsBroadcasting`
+(get only), `EnableBroadcasting`, `HudText`, plus the inherited working state.
+
+**What could NOT be verified offline: the PB whitelist.** The whitelist is
+registered in game code (`MyScriptWhitelist.AllowTypes` / `AllowNamespaceOfTypes`
+calls in `Sandbox.Game`), not in any data file, so nothing in the repo can prove
+that the in-game script compiler accepts `Components.TryGet`. `check_pb.py`
+compiles against hand-written stubs and explicitly does not model the whitelist.
+That is probe 1.1 of the live UAT, and it is the one gate this release cannot
+close from the repository. It is recorded as an assumption rather than treated
+as a fact — the standing rule here after the `IsWorking` episode.
+
+### Architecture
+
+A new phase, `AlertEvaluation`, sits between `ApplyPlan` and `WriteDiagnostics`:
+
+    ... BuildPlan -> ApplyPlan -> AlertEvaluation -> WriteDiagnostics -> ...
+
+Alerts therefore read the *settled* state of a cycle, and being downstream of
+`ApplyPlan` makes it structurally impossible for an alert to become a
+queue-management side effect. The pipeline is explicit:
+
+    Observation  ->  Classification  ->  State transition  ->  Delivery
+    PoolStats()      AlertLevel()        AlertStep()           AlertSend()
+
+`PoolStats()` is reused as-is. There is **no second capacity calculation** —
+the alert phase, `[IOPM.Warehouse.*]` and the LCDs all read the same function.
+A second one is exactly the class of duplication that produced the SolarCell
+and `[Stock]`-collision defects in earlier versions.
+
+State is keyed by the warehouse category IOPM already defines — `WH:ORES`,
+`WH:INGOTS`, … `WH:OVERFLOW` — never by display text, and each key carries
+independent state.
+
+### The two rules that were easy to get wrong
+
+**Hysteresis applies on the way DOWN only.** A band is entered the instant its
+threshold is crossed and left only once the reading has fallen
+`CapacityHysteresisPercent` below it. With `85 / 95 / 2`: `84 -> 91` warns,
+`91 -> 92` is silent, `91 -> 96` escalates, `96 -> 94` holds Critical,
+`96 -> 92.9` downgrades, `85.0 -> 84.9` does **not** recover, `-> 82.9` does.
+
+**Cooldown is a flap guard, not a timer.** It can only ever suppress. An
+escalation is never suppressed — a warehouse crossing into Critical is the
+message that matters most, and holding it back to satisfy a noise budget would
+be exactly backwards. A *downgrade* inside the cooldown is held; if the pool
+flaps back up before it expires the whole excursion is absorbed in silence,
+because the announced level never changed.
+
+The engine keeps two levels per key: `Lvl`, what the readings say, and `Sent`,
+what the player has actually been told. Keeping them apart is what makes "this
+was never announced, so there is nothing to recover from" expressible at all —
+and it is what lets a blocked transport be handled honestly (below).
+
+### Failure behaviour — every mode is a value, never an exception
+
+| `Transport` | Sends? |
+|---|---|
+| `Disabled` / `ConfigError` / `ControllerNotFound` / `AmbiguousName` / `ControllerNotWorking` / `ComponentUnavailable` | no |
+| `DegradedNoAntenna` / `OK` | yes |
+
+Duplicate exact-name controllers **fail closed**: every match is counted rather
+than the first one taken, so two blocks with the configured name produce
+`AmbiguousName` and no send, never an arbitrary pick.
+
+When transport cannot send, **the state engine is not advanced**. `Sent` means
+"you have heard this"; advancing it against a message nobody received would
+consume the transition and lose the alert permanently once transport came back.
+Those cycles increment `Blocked` instead.
+
+`UseAntenna=false` is a valid native setting (grid-local chat) and is never an
+IOPM error. `UseAntenna=true` with no broadcasting radio antenna on the
+construct is the one antenna condition the API lets us state as fact, so it is
+the only one reported. IOPM never switches controllers, never enables an
+antenna, and never widens `BroadcastTarget` to `Everyone` to get a message out.
+
+### Startup
+
+`AlertOnStartup=false` by default. The first evaluation after a PB restart, a
+reload, or `Enabled` going `false -> true` adopts the current state **silently**
+— a warehouse already at 97% does not arrive as breaking news. State is in
+memory only; `Save()` stays empty and no `Storage` persistence was added,
+because a restart re-baselining is the documented behaviour rather than a gap.
+
+### Configuration
+
+```ini
+[Alerts]
+Enabled=false
+BroadcastController=Broadcast Controller IOPM
+WarehouseWarningPercent=85
+WarehouseCriticalPercent=95
+CooldownSeconds=300
+CapacityHysteresisPercent=2
+AlertOnStartup=false
+```
+
+No key duplicates a native Broadcast Controller setting — target, `UseAntenna`
+and the chat Custom Name stay on the block. The controller's own Custom Name is
+what supplies the visible source prefix in chat, which is why no site name is
+hardcoded anywhere.
+
+`WarehouseCriticalPercent <= WarehouseWarningPercent` and an empty controller
+name both **fail closed**: `AlertCfgError` is set, capacity alerting is
+suspended, `Transport=ConfigError`, and the reason appears in
+`[IOPM.ConfigError.*]`. The bands would otherwise overlap and every Warning
+would also be a Critical — answering a question the config never asked.
+
+As always, upgrading does **not** back-fill new keys. `[Alerts]` has to be typed
+into an existing PB by hand.
+
+### Tooling
+
+`tools/se_stubs.cs` gained `IMyChatBroadcastControllerComponent`,
+`BroadcastTarget`, `IMyBroadcastControllerBlock`, `IMyRadioAntenna`,
+`IMyComponentContainer` and `IMyTerminalBlock.Components` — each written from
+the reflected signatures above, with the source recorded in a comment, rather
+than stubbed until the compiler stopped complaining. That distinction is the
+whole value of the stubs: a shape invented to silence an error tests nothing.
+
+`tests/run_release_gate.py` gained a step that **discovers and runs every
+`tests_*.py` beside it**, passing each the script under release. Previously
+`tests_yield_math.py` and `tests_canonicalize_stock.py` existed but were not in
+the gate, so a suite could rot unnoticed. Discovery rather than a hand-listed
+set means a suite added and then forgotten is impossible.
+
+Two new suites:
+
+- **`tests/tests_alert_engine.py`** — extracts the `// <alert-engine>` and
+  `// <alert-transport>` regions from the release source **verbatim**, compiles
+  them with `csc` and executes 61 scenarios against the real methods. It does
+  not model the rules in Python; a test that re-implements the thing it is
+  testing proves something about the test. If either region is missing or
+  empty, the suite **fails** rather than passing vacuously. This is only
+  possible because both regions were written free of any game API — keep them
+  that way.
+- **`tests/tests_invariants.py`** — the textual invariants no compiler can see:
+  `AddQueueItem()` has exactly one call site; no `ClearQueue` / `RemoveQueueItem`
+  / `MoveQueueItem` / `SwapQueueItem` / `InsertQueueItem` anywhere; `_onHand` is
+  fed by exactly `_whStock` / `_ovStock` / `_moStock`; the alert region mutates
+  no queue, no inventory and no block setting (`Enabled`, `UseAntenna`,
+  `BroadcastTarget`, `CustomName`, `CustomData`, antenna config); the extraction
+  markers still exist. It runs **six known-bad mutants of the real source
+  first** and fails if any survives, for the same reason the release gate runs
+  its negative controls first.
+
+Both new suites read the source's own `VERSION` constant and report **NOT
+APPLICABLE** on anything below 2.4.40, so the gate still passes when run against
+v2.4.39 — which matters, because the accepted release is what gets re-verified
+before a paste, not only the candidate. A source at or above 2.4.40 with the
+alert region missing is still a hard failure: that is a deleted feature, not an
+old file. `tests_invariants.py` keeps running its queue and `_onHand` rules on
+every version regardless.
+
+### Results
+
+    RELEASE GATE PASSED
+
+    1. negative controls    CS0136 detected, Comparison<T> screened     PASS
+    2. positive control     v2.4.40 compiles clean                      PASS
+    3. catalog integrity    45 products / 47 recipes / 0 pending        PASS
+       dependency closure   COMPLETE, every leaf an explicit boundary
+    4. tests_alert_engine        61 checks                              PASS
+       tests_canonicalize_stock  52 checks                              PASS
+       tests_invariants          22 checks + 6 negative controls        PASS
+       tests_yield_math                                                 PASS
+    5. transform verification + artifact compile gate                   PASS
+
+    source   165,318 chars
+    artifact  92,968 chars   (saved 72,350; 43.8%)
+    headroom   7,032 chars
+    737 string literals preserved byte-identical
+    code structure {=412 }=412 (=2111 )=2111 [=357 ]=357 ;=2086
+
+### Character budget — a deviation, stated plainly
+
+The target for this release was **artifact ≤ 92,000 / headroom ≥ 8,000**. The
+measured result is **92,968 / 7,032** — 968 characters over, about 1%.
+
+This is reported rather than refactored away. The instruction was explicit: do
+not perform a broad runtime refactor to make room, and the project had already
+had a dedicated size-reclamation pass. The overrun is entirely the new feature:
+the alert subsystem adds ~6,140 artifact characters across ~160 lines, which is
+~38 characters per minified line — ordinary density for this codebase, not fat.
+Trimming the ~970 needed would mean either deleting documented diagnostics or
+touching code outside this scope, and neither is worth 1%.
+
+The **hard** ceiling is 100,000 and is not at risk. But the next feature has
+7,032 characters to work in, not 13,000, and that is now the binding constraint
+on the alert workstream — the production/resource/loadout alerts planned next
+should be scoped against that number, and a reclamation pass may have to come
+first.
+
+Two things were *not* done to save space, on standing instruction: no newlines
+were removed (in-game error line numbers are located by line), and no knowledge
+table was deleted for looking unused without proving reachability.
+
+### Invariants — all preserved
+
+`AddQueueItem()` remains the only queue mutation; manual and existing queues are
+untouched; no refinery management; remote/docked inventory still never enters
+`_onHand`; `StockConfigurable` and `_recipes` remain independent; no process
+semantics inferred from `TypeId`; no physical identity inferred from a display
+name; an absent UI yield is still UNKNOWN and never 1; v2.4.39 was not modified.
+
+The alert code is observational for this release, and
+`tests/tests_invariants.py` now enforces that rather than asserting it in a
+comment.
+
+### Still requires live Chad UAT
+
+Everything in `uat/v2.4.40/plan.md`. In priority order: the **in-game compile**
+(whitelist acceptance of `Components.TryGet`), exact-name discovery, an actual
+chat line arriving from `SendMessage(string)`, the four transport failure modes,
+and the ten-step capacity walk. Steps 2.2, 2.4 and 2.5 are the ones that matter
+— a message there is alert spam, and the right response is to reject the release
+rather than tune the thresholds.
+
 ## 2.4.39 LIVE SMOKE TEST - PASS
 
 Recorded in `uat/v2.4.39/smoke-test.txt`. Seven facts proven, one deferred:

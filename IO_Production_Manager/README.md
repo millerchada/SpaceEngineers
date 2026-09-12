@@ -8,12 +8,20 @@ Version history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Project layout
 
-    IO_Production_Manager_v2.4.37.cs       current release source
-    IO_Production_Manager_v2.4.37.min.cs   current artifact - paste THIS
+    IO_Production_Manager_v2.4.40.cs       current candidate source
+    IO_Production_Manager_v2.4.40.min.cs   current candidate artifact - paste THIS
+    IO_Production_Manager_v2.4.39.cs       last release ACCEPTED in live play
+    IO_Production_Manager_v2.4.39.min.cs   its artifact
     README.md  CHANGELOG.md
 
+Two versions live here at a time, and the distinction matters: **v2.4.39 is the
+accepted runtime release** — it has passed the gate *and* a live smoke test.
+**v2.4.40 has passed the gate but not yet live UAT** (`uat/v2.4.40/plan.md`).
+Superseded pairs move to `archive/` only on promotion, so anything in `archive/`
+is neither.
+
     archive/vX.Y.Z/    every superseded release, grouped by version
-    tests/             audits, the release gate, the canonical-stock suite, fixtures
+    tests/             audits, the release gate, the unit + invariant suites, fixtures
     tools/             gen_io_docs.py - regenerates docs/ from evidence/
     docs/              GENERATED; do not hand-edit
     evidence/machines/ primary live machine evidence, one JSON per block
@@ -21,7 +29,7 @@ Version history: [CHANGELOG.md](CHANGELOG.md).
 
 Run everything from the repository root:
 
-    python IO_Production_Manager/tests/run_release_gate.py            IO_Production_Manager/IO_Production_Manager_v2.4.37.cs
+    python IO_Production_Manager/tests/run_release_gate.py            IO_Production_Manager/IO_Production_Manager_v2.4.40.cs
 
 ## Deploying — never paste the `.cs` file
 
@@ -29,11 +37,12 @@ The `.cs` is **source**. It is now larger than the PB's own 100,000-character
 ceiling, so it cannot be pasted into a block at all. Build the artifact:
 
 ```bash
-python ../build_pb.py IO_Production_Manager_v2.4.23.cs
-# -> IO_Production_Manager_v2.4.23.min.cs   <-- paste THIS into the block
+python ../../tools/build_pb.py IO_Production_Manager_v2.4.40.cs
+# -> IO_Production_Manager_v2.4.40.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.23: source 117,084 -> artifact 89,673 chars (10,327 headroom).
+v2.4.40: source 165,318 -> artifact **92,968** chars (**7,032** headroom).
+v2.4.39: source 151,049 -> artifact 86,828 chars (13,172 headroom).
 
 Comments and indentation cost ~20,000 characters and mean nothing at runtime,
 but stripping them from the source would destroy the documentation that keeps
@@ -109,6 +118,8 @@ into a name. There is no "Ejector" tag; there is an ejector *setting*.
 | **Other production blocks** | Output is always a sorting source; input is staged and tracked for queue support. |
 | **Welders, grinders, drills, reactors, turrets, cockpits, connectors** | Never a *local* sorting source or destination. On a **docked** construct, cargo containers, connectors and drills are unload sources; reactors, turrets, cockpits and O2/H2 generators are never drained. |
 | **Text surface** on any block | Becomes a panel only if tagged. The PB's own screen always shows a compact summary with no tag. |
+| **Broadcast Controller** | Alert transport, selected by the **exact name** in `[Alerts] BroadcastController` — never by block type, never by tag. Its target, `UseAntenna` and chat Custom Name are read but **never written**. Two blocks sharing the name is an error, not a choice. |
+| **Radio antenna** | Read only, and only to describe transport health: a count of antennas on this construct that are working *and* broadcasting. IOPM never selects, enables or reconfigures one. |
 
 ### Items with special handling
 
@@ -368,6 +379,172 @@ matching a real category are silently ignored, so check the resolved set that
 gets echoed back as `[IOPM.Organization] Skipped=` rather than trusting what
 you typed.
 
+## Capacity alerts (2.4.40+)
+
+**Off by default.** `[Alerts] Enabled=false` until you deliberately turn it on.
+
+IOPM watches the fill percentage of each warehouse category pool and the
+Overflow pool, and sends a one-line chat message through a **Broadcast
+Controller** when a pool changes alert state. That is the whole of v2.4.40:
+capacity only. Production-blocked, resource-shortage and docked-loadout alerts
+are deliberately *not* here — the transport and the state engine get proven in
+live play before anything else is routed through them.
+
+```ini
+[Alerts]
+Enabled=false
+BroadcastController=Broadcast Controller IOPM
+WarehouseWarningPercent=85
+WarehouseCriticalPercent=95
+CooldownSeconds=300
+CapacityHysteresisPercent=2
+AlertOnStartup=false
+```
+
+Nothing in that list duplicates a Broadcast Controller setting. **Target
+(Owner / Faction / Everyone), `UseAntenna` and the chat Custom Name stay on the
+block**, where you set them, and IOPM never writes any of them. The controller's
+own Custom Name is what gives a message its visible source prefix — which is why
+no site name is hardcoded anywhere in the script.
+
+### The pipeline
+
+    Observation  ->  Classification  ->  State transition  ->  Delivery
+    PoolStats()      AlertLevel()        AlertStep()           AlertSend()
+
+`AlertEvaluation` is its own phase, between `ApplyPlan` and `WriteDiagnostics`.
+That placement is not cosmetic: alerts read the *settled* state of a cycle, and
+sitting downstream of `ApplyPlan` makes it structurally impossible for an alert
+to turn into a queue-management side effect. The phase is **observational** —
+`tests/tests_invariants.py` rejects a build in which the alert region mutates a
+queue, moves inventory, or writes a block setting.
+
+Capacity comes from `PoolStats()`, the same function the `[IOPM.Warehouse.*]`
+diagnostics and the LCDs already use. There is no second capacity calculation.
+
+### Hysteresis — which way it applies
+
+A band is entered the instant its threshold is crossed and left only once the
+reading has fallen `CapacityHysteresisPercent` *below* it. With the defaults:
+
+| From | Reading | Level | Message |
+|---|---|---|---|
+| Healthy | 84 | Healthy | — |
+| Healthy | 91 | Warning | `WAREHOUSE WARNING \| Ingots 91%` |
+| Warning | 92 | Warning | — |
+| Warning | 96 | Critical | `WAREHOUSE CRITICAL \| Ingots 96%` |
+| Critical | 94 | **Critical** | — (inside 95−2) |
+| Critical | 92.9 | Warning | `WAREHOUSE WARNING \| Ingots 93%` |
+| Warning | 84.9 | **Warning** | — (inside 85−2) |
+| Warning | 82.9 | Healthy | `RECOVERED \| Ingots capacity back to 83%` |
+
+So a pool hovering on 85.0 does not recover the moment it reads 84.9, and a pool
+oscillating across a threshold produces one message, not one per cycle.
+
+### Cooldown is a flap guard, not a reminder timer
+
+**Time passing never creates a message.** There is no branch in the state engine
+that emits anything because a duration elapsed, so "still critical" reminders are
+not merely absent from this release — they are unreachable.
+
+| Transition | Result |
+|---|---|
+| Healthy -> Warning | event |
+| Warning -> Warning | silent |
+| Warning -> Critical | event, **even inside the cooldown** |
+| Critical -> Critical | silent |
+| Critical -> Warning | event, but only once `CooldownSeconds` has passed since this pool last spoke |
+| anything -> Healthy | recovery, **only if the problem was announced** |
+
+Escalation is never suppressed: a warehouse crossing into Critical is the
+message that matters most. A *downgrade* inside the cooldown is held, and if the
+pool flaps back up before the cooldown expires the whole excursion is absorbed
+silently, because the announced level never changed.
+
+The engine tracks two levels per pool. `Lvl` is what the readings say; `Sent` is
+what you have actually been told. Keeping them apart is what lets "this was
+never announced, so there is nothing to recover from" be expressible at all.
+
+### Startup, and switching alerting on
+
+With `AlertOnStartup=false` (the default), the first evaluation after a PB
+restart, a script reload, or `Enabled` going `false -> true` **adopts the current
+state silently**. A warehouse that was already at 97% before the script loaded
+does not arrive as breaking news. Set `AlertOnStartup=true` to announce the
+conditions found at startup instead.
+
+Alert state is **in memory only** — there is no `Storage` persistence, and
+`Save()` stays empty. A PB restart therefore re-baselines rather than resuming,
+which is the behaviour above and not a gap.
+
+### Stable keys
+
+State is keyed by the warehouse category IOPM already defines, never by display
+text: `WH:ORES`, `WH:INGOTS`, `WH:COMPONENTS`, `WH:AMMO`, `WH:TOOLS`,
+`WH:CONSUMABLES`, `WH:SEEDS`, `WH:MISC`, `WH:OVERFLOW`. Each key carries its own
+independent state, so Ingots going critical says nothing about Ammo.
+
+### Transport, and every way it can fail
+
+The controller is found during the same same-construct enumeration everything
+else uses, by the **configured exact name**, case-insensitively. Every match is
+counted rather than the first one taken — which is what lets duplicates fail
+closed instead of being resolved by enumeration order.
+
+| `[IOPM.Alerts] Transport` | Meaning | Sends? |
+|---|---|---|
+| `Disabled` | `Enabled=false` | no |
+| `ConfigError` | Critical% not above Warning%, or an empty controller name | no |
+| `ControllerNotFound` | no block on this construct has that name | no |
+| `AmbiguousName` | **two or more blocks share it — fail closed, no guess** | no |
+| `ControllerNotWorking` | found, but off / unpowered / damaged | no |
+| `ComponentUnavailable` | the chat component would not resolve | no |
+| `DegradedNoAntenna` | `UseAntenna=true` and no broadcasting radio antenna on this construct | yes |
+| `OK` | — | yes |
+
+None of these throws, and none of them is silent: each is a value in
+`[IOPM.Alerts]`. When transport cannot send, the state engine is **not
+advanced** — `Sent` means "you have heard this", and advancing it against a
+message nobody received would lose the alert permanently once transport came
+back. Those cycles are counted as `Blocked`.
+
+`UseAntenna=false` is a **valid** native setting (grid-local chat) and is never
+treated as an IOPM configuration error. IOPM will not switch controllers, enable
+an antenna, or widen `BroadcastTarget` to `Everyone` to get a message out.
+
+### What the script cannot tell you
+
+`SendMessage(string)` returns `void`. There is no delivery acknowledgement in
+the API at all, and the script cannot see whether a player's suit antenna is on,
+whether they are in radio range, or whether anyone read the line. So
+`[IOPM.Alerts] Alerts` counts messages **handed to the controller** — never
+messages received. Nothing in IOPM claims delivery.
+
+### Diagnostics
+
+```
+[IOPM.Alerts]
+Enabled=True
+Controller=Broadcast Controller IOPM
+ControllersFound=1
+ControllerWorking=True
+ComponentAvailable=True
+UseAntenna=true
+AntennasBroadcasting=1
+Transport=OK
+Alerts=3
+Suppressed=1
+Blocked=0
+SendErrors=0
+LastMessage=WAREHOUSE CRITICAL | Ingots 96%
+States=WH:INGOTS=Critical
+```
+
+`States` lists only pools that are not Healthy (`AllHealthy` when none are), and
+shows `Critical(announced Warning)` when a transition is being held back. There
+is deliberately **no historical log**: Custom Data is a fixed budget, and an
+append-only alert history is the one thing guaranteed to exhaust it.
+
 ## What `Stalled=0` means — read before "fixing" stall detection
 
 `[IOPM.Machines] Stalled` has read 0 for the entire life of this script. That
@@ -552,7 +729,7 @@ All configuration lives in the programmable block's **Custom Data**. Sections
 the script actually reads:
 
 ```
-General  Sorting  Production  Display  Docking  Stock  BlueprintOverrides
+General  Sorting  Production  Display  Docking  Alerts  Stock  BlueprintOverrides
 ```
 
 Anything else there is inert. `[BlueprintOverrides]` takes precedence over

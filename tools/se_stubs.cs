@@ -88,7 +88,19 @@ namespace Sandbox.ModAPI.Ingame {
     bool IsConnectedTo(IMyInventory other);
   }
 
+  // Verified: VRage.Game.ModAPI.Ingame.IMyEntity exposes Components, typed
+  // VRage.Game.Components.Interfaces.IMyEntityComponentContainer, which derives from
+  // IMyComponentContainer. TryGet<T>(out T) is declared on IMyComponentContainer and its type
+  // parameter is UNCONSTRAINED - so `block.Components.TryGet(out chat)` binds with T inferred
+  // as the component interface. Reproduced as one type here because the stubs describe shapes,
+  // not the real inheritance chain.
+  public interface IMyComponentContainer {
+    bool TryGet<T>(out T component);
+    bool Contains(Type type);
+  }
+
   public interface IMyTerminalBlock {
+    IMyComponentContainer Components { get; }
     string CustomName { get; set; }
     string CustomData { get; set; }
     long EntityId { get; }
@@ -101,6 +113,43 @@ namespace Sandbox.ModAPI.Ingame {
     MyDefinitionId BlockDefinition { get; }
     IMyInventory GetInventory(int index);
     bool IsSameConstructAs(IMyTerminalBlock other);
+  }
+
+  // BROADCAST CONTROLLER CHAT API. Verified against the shipped game assemblies on
+  // 2026-09-12, not guessed from terminal properties:
+  //   Sandbox.Common.dll  Sandbox.ModAPI.Ingame.IMyChatBroadcastControllerComponent
+  //     BroadcastTarget {get;set;}  CustomName {get;set;}  UseAntenna {get;set;}
+  //     MaxMessageCount {get;}  GetMessage(int)  SetMessage(int,string)
+  //     SendMessage(int)  SendMessage(string)  SendGps()  SendRandomMessage()
+  //   Sandbox.ModAPI.Ingame.BroadcastTarget = { Owner, Faction, Everyone }
+  //   Sandbox.ModAPI.Ingame.IMyBroadcastControllerBlock is a MARKER interface: it declares no
+  //     members at all, which is why the chat surface has to be reached through the component.
+  // SendMessage returns void. There is no delivery acknowledgement anywhere in this API.
+  public enum BroadcastTarget { Owner, Faction, Everyone }
+
+  public interface IMyChatBroadcastControllerComponent {
+    BroadcastTarget BroadcastTarget { get; set; }
+    string CustomName { get; set; }
+    bool UseAntenna { get; set; }
+    int MaxMessageCount { get; }
+    string GetMessage(int messageIndex);
+    void SetMessage(int messageIndex, string message);
+    void SendMessage(int messageIndex);
+    void SendMessage(string message);
+    void SendGps();
+    void SendRandomMessage();
+  }
+
+  public interface IMyBroadcastControllerBlock : IMyTerminalBlock { }
+
+  // Verified: Sandbox.ModAPI.Ingame.IMyRadioAntenna exposes Radius, ShowShipName,
+  // IsBroadcasting (get only), EnableBroadcasting, HudText - plus the inherited working state.
+  public interface IMyRadioAntenna : IMyTerminalBlock {
+    float Radius { get; set; }
+    bool ShowShipName { get; set; }
+    bool IsBroadcasting { get; }
+    bool EnableBroadcasting { get; set; }
+    string HudText { get; set; }
   }
 
   public interface IMyCargoContainer : IMyTerminalBlock { }

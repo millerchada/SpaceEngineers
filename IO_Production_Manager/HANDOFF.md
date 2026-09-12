@@ -5,6 +5,16 @@ repo at this commit, not recalled.
 
 ---
 
+> **Update (v2.4.40 candidate).** A first-stage alert release,
+> `IO_Production_Manager_v2.4.40.cs`, exists and has passed the full release gate
+> — but **it has not been through live UAT**, so everything below still stands:
+> v2.4.39 remains the accepted runtime release and the thing to paste. The
+> v2.4.40 scope, API-verification findings and open UAT plan are in
+> `CHANGELOG.md` and `uat/v2.4.40/plan.md`. One deviation is recorded there: the
+> v2.4.40 artifact is 92,968 chars (7,032 headroom), ~1% past its 92,000 target,
+> so the next alert workstream has less room than this checkpoint implies.
+> Recommended next work (below) is unchanged and none of it has been started.
+
 ## Current release
 
 | | |
