@@ -8,6 +8,8 @@
 // target/UseAntenna/chat name stay NATIVE BLOCK SETTINGS owned by the player.
 // v2.4.40: first-stage alerts - Broadcast Controller transport, a deterministic capacity
 // state engine with hysteresis and a flap-guard cooldown, and [IOPM.Alerts] diagnostics.
+// An alert is ANNOUNCED only once SendMessage returned without throwing; an observed startup
+// baseline is never an announcement, so it can never be "recovered" from.
 const string VERSION = "2.4.40";
 const StringComparison OIC = StringComparison.OrdinalIgnoreCase;
 static readonly StringComparer SCI = StringComparer.OrdinalIgnoreCase;
@@ -385,9 +387,9 @@ void LoadConfig() {
   // Critical <= Warning the two bands overlap and every Warning is also a Critical, so the
   // state engine would be answering a question the config never really asked.
   if (c.AlertCritPct <= c.AlertWarnPct)
-    c.AlertCfgError = "[Alerts] WarehouseCriticalPercent must be greater than WarehouseWarningPercent; capacity alerts suspended";
+    c.AlertCfgError = "[Alerts] WarehouseCriticalPercent must exceed WarehouseWarningPercent";
   if (c.AlertController == "")
-    c.AlertCfgError = "[Alerts] BroadcastController is empty; capacity alerts suspended";
+    c.AlertCfgError = "[Alerts] BroadcastController is empty";
   if (c.AlertCfgError != "") _configErrors.Add(c.AlertCfgError);
   List<MyIniKey> keys = new List<MyIniKey>();
   // FAIL-CLOSED ON ALIAS COLLISION. This loop used to be "for each key, StockTargets[Canon(key)]
@@ -2304,13 +2306,12 @@ class Recipe {
 }
 // ===== ALERTS =====================================================================
 // PIPELINE: Observation (PoolStats) -> Classification (AlertLevel) -> State transition
-// (AlertStep) -> Delivery (AlertSend). Each stage is separable, and the two that carry the
-// hard-to-reason-about rules are pure functions with no game API in them at all, so
-// tests/tests_alert_engine.py compiles THIS TEXT and drives it directly. A test that
-// re-implemented the rules in Python would prove something about the test, not about the ship.
-// Discovered by the same same-construct enumeration everything else uses. _bcFound is a COUNT
-// and not a bool because "two blocks answer to this name" has to be distinguishable from "one
-// does" - see AlertTransport.
+// (AlertStep) -> Delivery (AlertSend) -> Acknowledgement (AlertCommit). Every stage that
+// carries a rule is a pure function with no game API in it, so tests/tests_alert_engine.py
+// compiles THIS TEXT and drives it. A test that re-implemented the rules in Python would
+// prove something about the test, not about the ship.
+// _bcFound is a COUNT, not a bool: "two blocks answer to this name" has to be distinguishable
+// from "one does" - see AlertTransport.
 IMyTerminalBlock _bcBlock;
 int _bcFound, _antBroadcasting;
 IMyChatBroadcastControllerComponent _bcChat;
@@ -2320,14 +2321,21 @@ bool _alActive = false;
 int _alBlocked, _alSendErrors;
 DateTime _alLastEval = DateTime.UtcNow;
 // <alert-engine>
-// Lvl  = the classified level; the reference point hysteresis is measured against.
-// Sent = the level the audience has actually been told about. The two diverge whenever a
-//        transition is suppressed, and keeping them apart is what makes "never announced, so
-//        there is nothing to recover from" expressible at all.
-// Since = seconds since this key last produced a message.
+// THREE DIFFERENT THINGS, AND CONFLATING ANY TWO OF THEM IS A DEFECT:
+//   Lvl = what the readings say now. The reference point hysteresis is measured against.
+//   Ack = the level already accounted for - either observed at baseline or announced.
+//   Ann = whether that Ack level was ACTUALLY ANNOUNCED, i.e. handed to the controller with
+//         no exception. A startup baseline sets Ack WITHOUT setting Ann, which is the whole
+//         point: a warehouse that was already Critical before the script loaded is OBSERVED,
+//         never ANNOUNCED, so its later return to Healthy must NOT emit a recovery for a
+//         warning nobody ever got.
+//   Since = seconds since this key last SUCCEEDED in sending.
+// Ack and Ann are only ever advanced by AlertCommit, which the caller runs only after
+// SendMessage returned without throwing. An unsent transition therefore stays pending and is
+// re-derived next cycle, rather than being consumed against a message nobody received.
 const int AL_OK = 0, AL_WARN = 1, AL_CRIT = 2;
 static readonly string[] ALN = new string[] { "Healthy", "Warning", "Critical" };
-class ASt { public int Lvl, Sent; public double Since; }
+class ASt { public int Lvl, Ack; public bool Ann; public double Since; }
 Dictionary<string, ASt> _alerts = new Dictionary<string, ASt>(SCI);
 int _alEvents, _alSuppressed;
 string _alLastMsg = "";
@@ -2341,7 +2349,19 @@ static int AlertLevel(int cur, double pct, double warn, double crit, double hyst
   if (cur >= AL_WARN && pct >= warn - hyst) return AL_WARN;
   return AL_OK;
 }
-// One monitored condition, one tick. Returns the message to send, or "" for silence.
+// What this evaluation is allowed to do. 0 = skip entirely, 1 = silent baseline, 2 = evaluate
+// and send. THE BASELINE RUNS EVEN WHEN TRANSPORT IS DOWN, and that is deliberate: the
+// baseline records what was true when alerting started, which is a fact about TIME, not about
+// the controller. Deferring it until transport recovers would let a condition that arose
+// while the controller was offline be swallowed as "it was already like that".
+// Conversely a SENDING pass requires transport, because a transition consumed against a
+// message that was never transmitted is an alert lost for good.
+static int AlertPass(bool active, bool alertOnStartup, bool canSend) {
+  if (!active && !alertOnStartup) return 1;
+  return canSend ? 2 : 0;
+}
+// One monitored condition, one tick. Returns the message to send, or "" for silence. Returning
+// a message COMMITS NOTHING - see AlertCommit.
 // COOLDOWN IS A FLAP GUARD, NOT A TIMER. It can only ever SUPPRESS; no branch below emits
 // anything because time passed, so periodic "still critical" reminders are not merely absent
 // from this release, they are structurally unreachable.
@@ -2353,42 +2373,54 @@ string AlertStep(string key, string band, string label, double pct, double warn,
   st.Since += dt;
   int lvl = AlertLevel(st.Lvl, pct, warn, crit, hyst);
   st.Lvl = lvl;
-  // BASELINE. Adopt the current level as already-announced and say nothing. Used on startup
-  // and whenever alerting is switched on, so a condition that predates this script does not
-  // arrive as news. Since starts at cooldown so the first genuine recovery is not also made to
-  // wait out a flap guard that has nothing to guard against yet.
-  if (silent) { st.Sent = lvl; st.Since = cooldown; return ""; }
-  if (lvl == st.Sent) return "";                                           // Warning->Warning, Critical->Critical
-  if (lvl < st.Sent && st.Since < cooldown) { _alSuppressed++; return ""; } // flapping downwards
-  st.Sent = lvl;
-  st.Since = 0;
-  _alEvents++;
+  // BASELINE: observed, never announced. Ann stays false, so nothing here can later be
+  // "recovered" from.
+  if (silent) { st.Ack = lvl; st.Ann = false; return ""; }
+  if (lvl == st.Ack) return "";                    // Warning->Warning, Critical->Critical
+  if (lvl < st.Ack) {
+    // Falling back below a level that was only ever OBSERVED. Lower the bar in silence - there
+    // is no problem to announce the end of, because its start was never announced.
+    if (!st.Ann) { st.Ack = lvl; return ""; }
+    if (st.Since < cooldown) { _alSuppressed++; return ""; } // flapping downwards
+  }
   string p = ((int)Math.Round(pct)).ToString(); // whole percent; more precision is noise in chat
-  _alLastMsg = lvl == AL_CRIT ? band + " CRITICAL | " + label + " " + p + "%"
+  return lvl == AL_CRIT ? band + " CRITICAL | " + label + " " + p + "%"
     : lvl == AL_WARN ? band + " WARNING | " + label + " " + p + "%"
     : "RECOVERED | " + label + " capacity back to " + p + "%";
-  return _alLastMsg;
+}
+// Called ONLY after SendMessage(string) returned without throwing. That is the entire meaning
+// of "announced" here - the message was handed to the controller. There is no delivery
+// acknowledgement anywhere in this API and none is implied. Commits st.Lvl, which AlertStep
+// set to the level the returned message describes, in this same iteration.
+void AlertCommit(string key, string msg) {
+  ASt st;
+  if (!_alerts.TryGetValue(key, out st)) return;
+  st.Ack = st.Lvl;
+  st.Ann = st.Lvl > AL_OK; // a committed recovery leaves nothing outstanding
+  st.Since = 0;
+  _alEvents++;
+  _alLastMsg = msg;
 }
 // </alert-engine>
 // <alert-transport>
 // Every failure mode is a STATE, never an exception and never a silent success. Nothing here
-// can report OK for a controller IOPM was unable to reach, which is the whole point: the
-// script must not be able to pretend a message was delivered.
-static string AlertTransport(bool enabled, string cfgError, int found, bool working, bool component, bool useAntenna, int antennasBroadcasting) {
+// can report OK for a controller IOPM was unable to reach.
+// ANTENNA STATE IS DELIBERATELY NOT AN INPUT. The script can see whether same-construct radio
+// antennas are broadcasting, and it cannot see anything else that matters: laser antennas, a
+// player's suit antenna, radio range, or the fact that UseAntenna=false still delivers to
+// everyone on the grid. Deriving a transport verdict from that one visible fact would mean
+// WITHHOLDING a message from a player standing in the base because a mast was switched off.
+// So antenna facts are reported as advisory diagnostics and change no behaviour at all.
+static string AlertTransport(bool enabled, string cfgError, int found, bool working, bool component) {
   if (!enabled) return "Disabled";
   if (cfgError != "") return "ConfigError";
   if (found == 0) return "ControllerNotFound";
   if (found > 1) return "AmbiguousName"; // FAIL CLOSED: two blocks answer to the configured name
   if (!working) return "ControllerNotWorking";
   if (!component) return "ComponentUnavailable";
-  // UseAntenna=false is a VALID native setting - grid-local chat - and never an IOPM error.
-  // UseAntenna=true with no broadcasting radio antenna on this construct is the ONE antenna
-  // condition the API lets us state as fact, so it is the only one reported. The script cannot
-  // see a suit antenna, radio range, or whether a human read the line.
-  if (useAntenna && antennasBroadcasting == 0) return "DegradedNoAntenna";
   return "OK";
 }
-static bool AlertCanSend(string transport) { return transport == "OK" || transport == "DegradedNoAntenna"; }
+static bool AlertCanSend(string transport) { return transport == "OK"; }
 // </alert-transport>
 void AlertResolve() {
   _bcChat = null;
@@ -2408,8 +2440,7 @@ void AlertResolve() {
       }
     } catch { _bcChat = null; _bcComponent = false; }
   }
-  _alTransport = AlertTransport(_cfg.AlertsEnabled, _cfg.AlertCfgError, _bcFound, _bcWorking,
-    _bcComponent, _bcUseAntenna, _antBroadcasting);
+  _alTransport = AlertTransport(_cfg.AlertsEnabled, _cfg.AlertCfgError, _bcFound, _bcWorking, _bcComponent);
 }
 // OBSERVATIONAL PHASE. Reads pool fill and sends chat. Touches no queue, no inventory and no
 // block setting - not BroadcastTarget, not UseAntenna, not the controller's chat CustomName.
@@ -2428,15 +2459,10 @@ void AlertEvaluation() {
     return;
   }
   if (_cfg.AlertCfgError != "") return; // fail closed; reported through [IOPM.ConfigError.*]
-  bool silent = !_alActive && !_cfg.AlertOnStartup;
+  int pass = AlertPass(_alActive, _cfg.AlertOnStartup, AlertCanSend(_alTransport));
   _alActive = true;
-  if (!silent && !AlertCanSend(_alTransport)) {
-    // Transport is down. Do NOT advance the state engine. Sent means "the audience has heard
-    // this"; advancing it here would consume the transition against a message nobody got, and
-    // the alert would be lost for good once transport came back.
-    _alBlocked++;
-    return;
-  }
+  if (pass == 0) { _alBlocked++; return; } // transport down: no send, and no state advanced
+  bool silent = pass == 1;
   for (int i = 0; i < CATS.Length; i++) {
     List<CI> pool;
     if (!_pools.TryGetValue(CATS[i], out pool) || pool.Count == 0) continue;
@@ -2445,26 +2471,28 @@ void AlertEvaluation() {
     if (healthy == 0) continue;            // the LCDs use. There is no second calculation.
     bool ovf = CATS[i].Equals(OVF, OIC);
     // STABLE KEY, derived from the category IOPM already defines - never from display text.
-    string msg = AlertStep("WH:" + CATS[i].ToUpperInvariant(), ovf ? "OVERFLOW" : "WAREHOUSE",
-      CATS[i], pct, _cfg.AlertWarnPct, _cfg.AlertCritPct, _cfg.AlertHystPct,
-      _cfg.AlertCooldownSec, dt, silent);
-    if (msg != "") AlertSend(msg);
+    string key = "WH:" + CATS[i].ToUpperInvariant();
+    string msg = AlertStep(key, ovf ? "OVERFLOW" : "WAREHOUSE", CATS[i], pct, _cfg.AlertWarnPct,
+      _cfg.AlertCritPct, _cfg.AlertHystPct, _cfg.AlertCooldownSec, dt, silent);
+    // COMMIT ONLY ON A CLEAN SEND. If SendMessage throws, nothing is acknowledged and the
+    // transition is re-derived next cycle instead of being lost.
+    if (msg != "" && AlertSend(msg)) AlertCommit(key, msg);
   }
 }
-void AlertSend(string msg) {
-  if (_bcChat == null) return;
-  // FIRE AND FORGET. SendMessage(string) returns void and has no acknowledgement of any kind,
-  // so [IOPM.Alerts] Alerts counts messages HANDED TO THE CONTROLLER, never messages received.
-  try { _bcChat.SendMessage(msg); } catch { _alSendErrors++; }
+// FIRE AND FORGET, but not fire and pretend. Returns true only when SendMessage returned
+// without throwing - which means "handed to the controller", never "received by anyone".
+bool AlertSend(string msg) {
+  if (_bcChat == null) return false;
+  try { _bcChat.SendMessage(msg); return true; } catch { _alSendErrors++; return false; }
 }
 string AlertStateSummary() {
   if (!_cfg.AlertsEnabled) return "off";
   if (_alerts.Count == 0) return "none";
   string txt = "";
   foreach (var kv in _alerts) {
-    if (kv.Value.Lvl == AL_OK && kv.Value.Sent == AL_OK) continue;
+    if (kv.Value.Lvl == AL_OK && !kv.Value.Ann) continue;
     txt += (txt == "" ? "" : " ") + kv.Key + "=" + ALN[kv.Value.Lvl] +
-      (kv.Value.Sent != kv.Value.Lvl ? "(announced " + ALN[kv.Value.Sent] + ")" : "");
+      (kv.Value.Ann ? "" : "/unannounced");
   }
   return txt == "" ? "AllHealthy" : txt;
 }
@@ -2525,9 +2553,11 @@ void WriteDiagnostics() {
   ini.Set(alk, "ControllersFound", _bcFound);
   ini.Set(alk, "ControllerWorking", _bcWorking);
   ini.Set(alk, "ComponentAvailable", _bcComponent);
-  ini.Set(alk, "UseAntenna", _bcComponent ? (_bcUseAntenna ? "true" : "false") : "unknown");
-  ini.Set(alk, "AntennasBroadcasting", _antBroadcasting);
   ini.Set(alk, "Transport", _alTransport);
+  // The next two are ADVISORY and change no behaviour whatsoever. See AlertTransport for why
+  // antenna state is not, and cannot honestly be made into, a transport verdict.
+  ini.Set(alk, "UseAntennaAdvisory", _bcComponent ? (_bcUseAntenna ? "true" : "false") : "unknown");
+  ini.Set(alk, "AntennasBroadcastingAdvisory", _antBroadcasting);
   ini.Set(alk, "Alerts", _alEvents);
   ini.Set(alk, "Suppressed", _alSuppressed);
   ini.Set(alk, "Blocked", _alBlocked);

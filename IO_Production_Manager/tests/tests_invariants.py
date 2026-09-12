@@ -112,6 +112,23 @@ def run(src, report):
     check('the alert phase calls PoolStats rather than recomputing fill',
           bool(m) and 'PoolStats(pool, out healthy, out pct)' in m.group(0))
 
+    # The rules below are the ones the v2.4.40 review found broken. Each names an EXACT line,
+    # because each defect was wrong by a single token and a looser pattern would have matched
+    # the broken version just as happily.
+    report('-- announcement is earned, not assumed')
+    body = m.group(0) if m else ''
+    check('a startup baseline never marks a level announced',
+          'if (silent) { st.Ack = lvl; st.Ann = false; return ""; }' in body)
+    check('an alert is committed ONLY when AlertSend returned true',
+          'if (msg != "" && AlertSend(msg)) AlertCommit(key, msg);' in body)
+    check('AlertSend reports success rather than returning void',
+          'bool AlertSend(string msg) {' in body)
+    check('antenna state is not an input to the transport verdict',
+          'static string AlertTransport(bool enabled, string cfgError, int found, '
+          'bool working, bool component) {' in body)
+    check('no transport state claims a send it cannot make',
+          'DegradedNoAntenna' not in body)
+
     report('-- the extraction markers tests_alert_engine.py depends on')
     for name in ('alert-engine', 'alert-transport'):
         check('marker pair <%s> present' % name,
@@ -141,8 +158,18 @@ MUTANTS = [
      lambda s: s.replace('    } catch { _bcChat = null; _bcComponent = false; }',
                          '      ch.UseAntenna = true;\n    } catch { _bcChat = null; _bcComponent = false; }', 1)),
     ('the alert phase renaming the controller',
-     lambda s: s.replace('void AlertSend(string msg) {',
-                         'void AlertSend(string msg) {\n  _bcBlock.CustomName = "IOPM";', 1)),
+     lambda s: s.replace('bool AlertSend(string msg) {',
+                         'bool AlertSend(string msg) {\n  _bcBlock.CustomName = "IOPM";', 1)),
+    ('a startup baseline that fabricates an announcement',
+     lambda s: s.replace('if (silent) { st.Ack = lvl; st.Ann = false; return ""; }',
+                         'if (silent) { st.Ack = lvl; st.Ann = true; return ""; }', 1)),
+    ('committing an alert without a successful send',
+     lambda s: s.replace('if (msg != "" && AlertSend(msg)) AlertCommit(key, msg);',
+                         'if (msg != "") { AlertSend(msg); AlertCommit(key, msg); }', 1)),
+    ('antenna state smuggled back into the transport verdict',
+     lambda s: s.replace('static bool AlertCanSend(string transport) { return transport == "OK"; }',
+                         'static bool AlertCanSend(string transport) { return transport == "OK" '
+                         '|| transport == "DegradedNoAntenna"; }', 1)),
     ('a deleted extraction marker',
      lambda s: s.replace('// </alert-engine>', '', 1)),
 ]

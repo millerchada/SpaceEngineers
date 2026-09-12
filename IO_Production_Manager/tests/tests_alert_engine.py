@@ -55,65 +55,128 @@ public class T {
 # test failure rather than a silent reformat of what the player sees in chat.
 DRIVER = '''
   // ---- test driver -------------------------------------------------------
+  // Three ways to drive one tick, because delivery is now part of the contract:
+  //   SC = step, then commit  -> the send succeeded
+  //   SN = step, no commit    -> the send threw, or transport refused it
+  //   SB = silent baseline    -> what startup does
+  // A test that only ever used SC could not tell the difference between "announced" and
+  // "observed", which is exactly the confusion that produced the defects this suite now pins.
   const double W = 85, C = 95, H = 2, CD = 300;
   int fails = 0, checks = 0;
   void Eq(string what, string got, string want) {
     checks++;
     bool ok = got == want;
     if (!ok) fails++;
-    Console.WriteLine("  " + (what + new string(' ', Math.Max(1, 56 - what.Length))) + (ok ? "PASS" : "FAIL  got [" + got + "] want [" + want + "]"));
+    Console.WriteLine("  " + (what + new string(' ', Math.Max(1, 58 - what.Length))) + (ok ? "PASS" : "FAIL  got [" + got + "] want [" + want + "]"));
   }
   void EqI(string what, int got, int want) { Eq(what, got.ToString(), want.ToString()); }
-  string S(string key, double pct, double dt) { return AlertStep(key, "WAREHOUSE", "Ingots", pct, W, C, H, CD, dt, false); }
-  string SB(string key, double pct, double dt) { return AlertStep(key, "WAREHOUSE", "Ingots", pct, W, C, H, CD, dt, true); }
+  string Step(string key, double pct, double dt, bool silent) {
+    return AlertStep(key, "WAREHOUSE", "Ingots", pct, W, C, H, CD, dt, silent);
+  }
+  string SC(string key, double pct, double dt) {
+    string m = Step(key, pct, dt, false);
+    if (m != "") AlertCommit(key, m);
+    return m;
+  }
+  string SN(string key, double pct, double dt) { return Step(key, pct, dt, false); }
+  string SB(string key, double pct, double dt) { return Step(key, pct, dt, true); }
 
   public int Run() {
     Console.WriteLine("-- threshold transitions");
-    Eq("84 on a fresh key is silent", S("A", 84, 5), "");
-    Eq("84 -> 91 sends one WARNING", S("A", 91, 5), "WAREHOUSE WARNING | Ingots 91%");
-    Eq("91 -> 92 says nothing", S("A", 92, 5), "");
-    Eq("92 -> 91 says nothing", S("A", 91, 5), "");
-    Eq("91 -> 96 escalates to CRITICAL", S("A", 96, 5), "WAREHOUSE CRITICAL | Ingots 96%");
-    Eq("critical -> critical is silent", S("A", 97, 5), "");
-    Eq("critical -> critical is silent again", S("A", 96, 5), "");
+    Eq("84 on a fresh key is silent", SC("A", 84, 5), "");
+    Eq("84 -> 91 sends one WARNING", SC("A", 91, 5), "WAREHOUSE WARNING | Ingots 91%");
+    Eq("91 -> 92 says nothing", SC("A", 92, 5), "");
+    Eq("92 -> 91 says nothing", SC("A", 91, 5), "");
+    Eq("91 -> 96 escalates to CRITICAL", SC("A", 96, 5), "WAREHOUSE CRITICAL | Ingots 96%");
+    Eq("critical -> critical is silent", SC("A", 97, 5), "");
+    Eq("critical -> critical is silent again", SC("A", 96, 5), "");
 
     Console.WriteLine("-- cooldown is a flap guard, never a reminder timer");
-    Eq("an hour of Critical produces nothing", S("A", 96, 3600), "");
-    Eq("another hour produces nothing", S("A", 99, 3600), "");
-    Eq("escalation is NOT suppressed inside the cooldown", S("B", 91, 1), "WAREHOUSE WARNING | Ingots 91%");
-    Eq("  ... and Critical still lands 1s later", S("B", 96, 1), "WAREHOUSE CRITICAL | Ingots 96%");
+    Eq("an hour of Critical produces nothing", SC("A", 96, 3600), "");
+    Eq("another hour produces nothing", SC("A", 99, 3600), "");
+    Eq("escalation is NOT suppressed inside the cooldown", SC("B", 91, 1), "WAREHOUSE WARNING | Ingots 91%");
+    Eq("  ... and Critical still lands 1s later", SC("B", 96, 1), "WAREHOUSE CRITICAL | Ingots 96%");
     int supp0 = _alSuppressed;
-    Eq("downgrade inside the cooldown is suppressed", S("B", 90, 10), "");
+    Eq("downgrade inside the cooldown is suppressed", SC("B", 90, 10), "");
     EqI("  ... and is counted as suppressed", _alSuppressed - supp0, 1);
-    Eq("flapping back up is absorbed, not re-announced", S("B", 96, 10), "");
-    Eq("downgrade once the cooldown has elapsed", S("B", 90, 301), "WAREHOUSE WARNING | Ingots 90%");
+    Eq("flapping back up is absorbed, not re-announced", SC("B", 96, 10), "");
+    Eq("downgrade once the cooldown has elapsed", SC("B", 90, 301), "WAREHOUSE WARNING | Ingots 90%");
 
     Console.WriteLine("-- hysteresis");
-    Eq("85.0 -> 84.9 does NOT recover", S("C", 86, 5) + S("C", 84.9, 5), "WAREHOUSE WARNING | Ingots 86%");
-    Eq("83.1 is still inside the warning band", S("C", 83.1, 400), "");
-    Eq("82.9 clears it and recovers", S("C", 82.9, 400), "RECOVERED | Ingots capacity back to 83%");
-    Eq("critical entry", S("D", 96, 5), "WAREHOUSE CRITICAL | Ingots 96%");
-    Eq("94 is inside the critical hysteresis band", S("D", 94, 400), "");
-    Eq("93 is still inside it", S("D", 93, 400), "");
-    Eq("92.9 downgrades to Warning", S("D", 92.9, 400), "WAREHOUSE WARNING | Ingots 93%");
+    Eq("85.0 -> 84.9 does NOT recover", SC("C", 86, 5) + SC("C", 84.9, 5), "WAREHOUSE WARNING | Ingots 86%");
+    Eq("83.1 is still inside the warning band", SC("C", 83.1, 400), "");
+    Eq("82.9 clears it and recovers", SC("C", 82.9, 400), "RECOVERED | Ingots capacity back to 83%");
+    Eq("critical entry", SC("D", 96, 5), "WAREHOUSE CRITICAL | Ingots 96%");
+    Eq("94 is inside the critical hysteresis band", SC("D", 94, 400), "");
+    Eq("93 is still inside it", SC("D", 93, 400), "");
+    Eq("92.9 downgrades to Warning", SC("D", 92.9, 400), "WAREHOUSE WARNING | Ingots 93%");
     int supp1 = _alSuppressed;
-    for (int i = 0; i < 20; i++) { S("E", 84.5, 1); S("E", 85.5, 1); }
-    EqI("20 oscillations around 85 emit at most one event", _alerts["E"].Sent, 1);
+    for (int i = 0; i < 20; i++) { SC("E", 84.5, 1); SC("E", 85.5, 1); }
+    EqI("20 oscillations around 85 acknowledge one level", _alerts["E"].Ack, 1);
     EqI("  ... and suppress nothing (never crossed back down)", _alSuppressed - supp1, 0);
 
-    Console.WriteLine("-- recovery only for what was announced");
-    Eq("healthy key stays quiet at 84", S("F", 84, 5), "");
-    Eq("falling to 10 announces no recovery", S("F", 10, 400), "");
-    EqI("  ... and the key was never announced", _alerts["F"].Sent, 0);
+    Console.WriteLine("-- recovery only for what was ANNOUNCED");
+    Eq("healthy key stays quiet at 84", SC("F", 84, 5), "");
+    Eq("falling to 10 announces no recovery", SC("F", 10, 400), "");
+    Eq("  ... and nothing was ever announced", _alerts["F"].Ann ? "y" : "n", "n");
 
-    Console.WriteLine("-- startup baseline");
-    Eq("baseline at 97 is silent", SB("G", 97, 5), "");
-    Eq("still 97 after the baseline is silent", S("G", 97, 5), "");
-    Eq("96 after the baseline is silent (same level)", S("G", 96, 5), "");
-    EqI("  ... baseline recorded Critical as announced", _alerts["G"].Sent, 2);
-    Eq("recovery from a baselined problem still fires", S("G", 50, 5), "RECOVERED | Ingots capacity back to 50%");
-    Eq("baseline at 50 is silent", SB("H", 50, 5), "");
-    Eq("rising to 91 after a healthy baseline warns", S("H", 91, 5), "WAREHOUSE WARNING | Ingots 91%");
+    Console.WriteLine("-- startup baseline is OBSERVED, never ANNOUNCED");
+    Eq("start Healthy, stay Healthy: silent", SB("B1", 50, 5) + SC("B1", 50, 5), "");
+    Eq("start Warning, stay Warning: silent", SB("B2", 91, 5) + SC("B2", 91, 5), "");
+    Eq("baseline records the observed level", ALN[_alerts["B2"].Ack], "Warning");
+    Eq("  ... but does NOT mark it announced", _alerts["B2"].Ann ? "y" : "n", "n");
+    Eq("start Warning -> Healthy: NO recovery", SB("B3", 91, 5) + SC("B3", 50, 5), "");
+    Eq("start Critical -> Healthy: NO recovery", SB("B4", 97, 5) + SC("B4", 50, 5), "");
+    Eq("start Warning -> Critical: escalation IS sent",
+       SB("B5", 91, 5) + SC("B5", 96, 5), "WAREHOUSE CRITICAL | Ingots 96%");
+    Eq("start Critical -> Warning: silent, nothing was announced",
+       SB("B6", 97, 5) + SC("B6", 92, 5), "");
+    Eq("  ... and on down to Healthy, still silent", SC("B6", 50, 400), "");
+    Eq("a real Warning after a Healthy baseline is sent",
+       SB("B7", 50, 5) + SC("B7", 91, 5), "WAREHOUSE WARNING | Ingots 91%");
+    Eq("  ... and ITS recovery is announced normally",
+       SC("B7", 50, 400), "RECOVERED | Ingots capacity back to 50%");
+
+    Console.WriteLine("-- a transition is consumed only by a SUCCESSFUL send");
+    int ev0 = _alEvents;
+    string last0 = _alLastMsg;
+    Eq("the transition is offered", SN("R", 91, 5), "WAREHOUSE WARNING | Ingots 91%");
+    EqI("  ... a failed send counts no alert", _alEvents - ev0, 0);
+    Eq("  ... and does not become LastMessage", _alLastMsg, last0);
+    Eq("  ... and nothing is marked announced", _alerts["R"].Ann ? "y" : "n", "n");
+    Eq("the SAME transition is re-offered next cycle", SN("R", 91, 5), "WAREHOUSE WARNING | Ingots 91%");
+    Eq("and again, indefinitely", SN("R", 92, 5), "WAREHOUSE WARNING | Ingots 92%");
+    Eq("it commits when the send finally succeeds", SC("R", 91, 5), "WAREHOUSE WARNING | Ingots 91%");
+    EqI("  ... now it counts", _alEvents - ev0, 1);
+    Eq("  ... and becomes LastMessage", _alLastMsg, "WAREHOUSE WARNING | Ingots 91%");
+    Eq("  ... and stops repeating", SC("R", 91, 5), "");
+    Eq("an escalation past a stuck transition wins",
+       SN("R2", 91, 5) + "|" + SC("R2", 96, 5),
+       "WAREHOUSE WARNING | Ingots 91%|WAREHOUSE CRITICAL | Ingots 96%");
+    Eq("  ... and the stuck Warning is not replayed afterwards", SC("R2", 96, 5), "");
+    Eq("a failed recovery is retried, not lost",
+       SC("R3", 91, 5) + "|" + SN("R3", 50, 400) + "|" + SC("R3", 50, 5),
+       "WAREHOUSE WARNING | Ingots 91%|RECOVERED | Ingots capacity back to 50%|RECOVERED | Ingots capacity back to 50%");
+
+    Console.WriteLine("-- what an evaluation is allowed to do");
+    EqI("first run, AlertOnStartup=false, transport up   -> baseline", AlertPass(false, false, true), 1);
+    EqI("first run, AlertOnStartup=false, transport DOWN -> baseline", AlertPass(false, false, false), 1);
+    EqI("first run, AlertOnStartup=true,  transport up   -> evaluate", AlertPass(false, true, true), 2);
+    EqI("first run, AlertOnStartup=true,  transport DOWN -> skip", AlertPass(false, true, false), 0);
+    EqI("running, transport up   -> evaluate", AlertPass(true, false, true), 2);
+    EqI("running, transport DOWN -> skip", AlertPass(true, false, false), 0);
+
+    Console.WriteLine("-- transport down at startup does not swallow a condition");
+    // Enabled while the controller is offline and Ingots is ALREADY Critical. The baseline
+    // still runs - it records what was true when alerting started - but announces nothing.
+    Eq("baseline runs even with transport down", SB("T1", 97, 5), "");
+    Eq("  ... and the pre-existing condition stays silent on restore", SC("T1", 97, 5), "");
+    // Enabled while the controller is offline and Ingots is Healthy. The pool then goes
+    // Critical WHILE TRANSPORT IS DOWN, so no evaluation runs at all (AlertPass == 0).
+    Eq("healthy baseline with transport down", SB("T2", 50, 5), "");
+    EqI("  ... evaluations are skipped while down", AlertPass(true, false, false), 0);
+    Eq("  ... and the condition alerts once transport returns",
+       SC("T2", 97, 5), "WAREHOUSE CRITICAL | Ingots 97%");
 
     Console.WriteLine("-- message format");
     Eq("overflow band uses its own prefix",
@@ -134,23 +197,23 @@ DRIVER = '''
     EqI("0 from Critical  -> Healthy",  AlertLevel(2, 0, W, C, H), 0);
 
     Console.WriteLine("-- transport failure states");
-    Eq("alerts off",              AlertTransport(false, "", 1, true, true, false, 1), "Disabled");
-    Eq("bad threshold config",    AlertTransport(true, "bad", 1, true, true, false, 1), "ConfigError");
-    Eq("controller missing",      AlertTransport(true, "", 0, false, false, false, 1), "ControllerNotFound");
-    Eq("two blocks, same name",   AlertTransport(true, "", 2, true, true, false, 1), "AmbiguousName");
-    Eq("  ... even if both work", AlertTransport(true, "", 3, true, true, true, 5), "AmbiguousName");
-    Eq("controller not working",  AlertTransport(true, "", 1, false, false, false, 1), "ControllerNotWorking");
-    Eq("component unavailable",   AlertTransport(true, "", 1, true, false, false, 1), "ComponentUnavailable");
-    Eq("UseAntenna=false is OK",  AlertTransport(true, "", 1, true, true, false, 0), "OK");
-    Eq("UseAntenna, no antenna",  AlertTransport(true, "", 1, true, true, true, 0), "DegradedNoAntenna");
-    Eq("UseAntenna, antenna up",  AlertTransport(true, "", 1, true, true, true, 1), "OK");
+    Eq("alerts off",              AlertTransport(false, "", 1, true, true), "Disabled");
+    Eq("bad threshold config",    AlertTransport(true, "bad", 1, true, true), "ConfigError");
+    Eq("controller missing",      AlertTransport(true, "", 0, false, false), "ControllerNotFound");
+    Eq("two blocks, same name",   AlertTransport(true, "", 2, true, true), "AmbiguousName");
+    Eq("  ... even if both work", AlertTransport(true, "", 3, true, true), "AmbiguousName");
+    Eq("controller not working",  AlertTransport(true, "", 1, false, false), "ControllerNotWorking");
+    Eq("component unavailable",   AlertTransport(true, "", 1, true, false), "ComponentUnavailable");
+    Eq("everything present",      AlertTransport(true, "", 1, true, true), "OK");
     Eq("sendable: OK",            AlertCanSend("OK") ? "y" : "n", "y");
-    Eq("sendable: degraded",      AlertCanSend("DegradedNoAntenna") ? "y" : "n", "y");
     Eq("NOT sendable: missing",   AlertCanSend("ControllerNotFound") ? "y" : "n", "n");
     Eq("NOT sendable: ambiguous", AlertCanSend("AmbiguousName") ? "y" : "n", "n");
     Eq("NOT sendable: no comp",   AlertCanSend("ComponentUnavailable") ? "y" : "n", "n");
     Eq("NOT sendable: not working", AlertCanSend("ControllerNotWorking") ? "y" : "n", "n");
     Eq("NOT sendable: disabled",  AlertCanSend("Disabled") ? "y" : "n", "n");
+    // Antenna state is advisory and must never become a transport verdict again. Pinned here
+    // so reintroducing the string cannot quietly make it sendable.
+    Eq("antenna state is NOT a transport verdict", AlertCanSend("DegradedNoAntenna") ? "y" : "n", "n");
 
     Console.WriteLine();
     Console.WriteLine(fails == 0 ? ("ALL " + checks + " CHECKS PASSED") : (fails + " of " + checks + " CHECKS FAILED"));

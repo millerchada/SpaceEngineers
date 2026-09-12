@@ -11,8 +11,10 @@ repo at this commit, not recalled.
 > v2.4.39 remains the accepted runtime release and the thing to paste. The
 > v2.4.40 scope, API-verification findings and open UAT plan are in
 > `CHANGELOG.md` and `uat/v2.4.40/plan.md`. One deviation is recorded there: the
-> v2.4.40 artifact is 92,968 chars (7,032 headroom), ~1% past its 92,000 target,
-> so the next alert workstream has less room than this checkpoint implies.
+> v2.4.40 artifact is 93,102 chars (6,898 headroom), ~1% past its 92,000 target,
+> so the next alert workstream has less room than this checkpoint implies. Review
+> of `a0d861b` found four alert-state defects (all corrected); the CHANGELOG
+> correction entry is the record.
 > Recommended next work (below) is unchanged and none of it has been started.
 
 ## Current release

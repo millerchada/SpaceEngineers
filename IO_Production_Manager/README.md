@@ -41,7 +41,7 @@ python ../../tools/build_pb.py IO_Production_Manager_v2.4.40.cs
 # -> IO_Production_Manager_v2.4.40.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.40: source 165,318 -> artifact **92,968** chars (**7,032** headroom).
+v2.4.40: source 167,311 -> artifact **93,102** chars (**6,898** headroom).
 v2.4.39: source 151,049 -> artifact 86,828 chars (13,172 headroom).
 
 Comments and indentation cost ~20,000 characters and mean nothing at runtime,
@@ -465,17 +465,50 @@ The engine tracks two levels per pool. `Lvl` is what the readings say; `Sent` is
 what you have actually been told. Keeping them apart is what lets "this was
 never announced, so there is nothing to recover from" be expressible at all.
 
+### Observed is not announced — and it is the difference that matters
+
+The engine keeps three things per pool, and conflating any two of them is a defect:
+
+| | |
+|---|---|
+| `Lvl` | what the readings say now — the reference point hysteresis is measured against |
+| `Ack` | the level already accounted for, either observed at baseline or announced |
+| `Ann` | whether that level was **actually announced** — handed to the controller without an exception |
+
+A startup baseline sets `Ack` **without** setting `Ann`. That is the whole
+point: a warehouse already Critical before the script loaded is *observed*,
+never *announced*, so its later return to Healthy emits **no** `RECOVERED` line
+for a warning nobody ever received.
+
+| Sequence | Result |
+|---|---|
+| start Healthy, stay Healthy | silent |
+| start Warning, stay Warning | silent |
+| start Warning → Healthy | **silent** — nothing was announced to recover from |
+| start Critical → Healthy | **silent** |
+| start Warning → Critical | **Critical is sent** — a genuine escalation past the baseline |
+| start Critical → Warning | silent, if nothing had been announced |
+| real Warning sent, later → Healthy | `RECOVERED` as normal |
+
+This is not "suppress all recoveries". A recovery is sent exactly when the
+problem it ends was itself announced.
+
 ### Startup, and switching alerting on
 
 With `AlertOnStartup=false` (the default), the first evaluation after a PB
-restart, a script reload, or `Enabled` going `false -> true` **adopts the current
-state silently**. A warehouse that was already at 97% before the script loaded
-does not arrive as breaking news. Set `AlertOnStartup=true` to announce the
-conditions found at startup instead.
+restart, a reload, or `Enabled` going `false -> true` takes that silent
+baseline. Set `AlertOnStartup=true` to announce the conditions found at startup
+instead.
 
-Alert state is **in memory only** — there is no `Storage` persistence, and
-`Save()` stays empty. A PB restart therefore re-baselines rather than resuming,
-which is the behaviour above and not a gap.
+**The baseline runs even when transport is down**, and that is deliberate. The
+baseline records what was true when alerting *started* — a fact about time, not
+about the controller. Deferring it until the controller came back would let a
+condition that arose *while* the controller was offline be swallowed as "it was
+already like that". A *sending* pass, by contrast, requires transport.
+
+Alert state is **in memory only** — there is no `Storage` persistence and
+`Save()` stays empty. A PB restart re-baselines rather than resuming, which is
+the behaviour above and not a gap.
 
 ### Stable keys
 
@@ -491,34 +524,63 @@ else uses, by the **configured exact name**, case-insensitively. Every match is
 counted rather than the first one taken — which is what lets duplicates fail
 closed instead of being resolved by enumeration order.
 
-| `[IOPM.Alerts] Transport` | Meaning | Sends? |
-|---|---|---|
-| `Disabled` | `Enabled=false` | no |
-| `ConfigError` | Critical% not above Warning%, or an empty controller name | no |
-| `ControllerNotFound` | no block on this construct has that name | no |
-| `AmbiguousName` | **two or more blocks share it — fail closed, no guess** | no |
-| `ControllerNotWorking` | found, but off / unpowered / damaged | no |
-| `ComponentUnavailable` | the chat component would not resolve | no |
-| `DegradedNoAntenna` | `UseAntenna=true` and no broadcasting radio antenna on this construct | yes |
-| `OK` | — | yes |
+| `[IOPM.Alerts] Transport` | Meaning |
+|---|---|
+| `OK` | the only sendable state |
+| `Disabled` | `Enabled=false` |
+| `ConfigError` | Critical% not above Warning%, or an empty controller name |
+| `ControllerNotFound` | no block on this construct has that name |
+| `AmbiguousName` | **two or more blocks share it — fail closed, no guess** |
+| `ControllerNotWorking` | found, but off / unpowered / damaged |
+| `ComponentUnavailable` | the chat component would not resolve |
 
-None of these throws, and none of them is silent: each is a value in
-`[IOPM.Alerts]`. When transport cannot send, the state engine is **not
-advanced** — `Sent` means "you have heard this", and advancing it against a
-message nobody received would lose the alert permanently once transport came
-back. Those cycles are counted as `Blocked`.
+None of these throws, and none is silent: each is a value in `[IOPM.Alerts]`.
+When transport is not `OK` the evaluation is skipped entirely, the state engine
+is **not advanced**, and `Blocked` counts the cycle. A transition that could not
+be sent stays pending and is re-derived next cycle, so it is still delivered
+once the controller comes back.
 
-`UseAntenna=false` is a **valid** native setting (grid-local chat) and is never
-treated as an IOPM configuration error. IOPM will not switch controllers, enable
-an antenna, or widen `BroadcastTarget` to `Everyone` to get a message out.
+### Antenna state is advisory, and deliberately so
 
-### What the script cannot tell you
+IOPM reports two antenna facts and **acts on neither**:
 
-`SendMessage(string)` returns `void`. There is no delivery acknowledgement in
-the API at all, and the script cannot see whether a player's suit antenna is on,
-whether they are in radio range, or whether anyone read the line. So
-`[IOPM.Alerts] Alerts` counts messages **handed to the controller** — never
-messages received. Nothing in IOPM claims delivery.
+```
+UseAntennaAdvisory=true
+AntennasBroadcastingAdvisory=1
+```
+
+An earlier draft of this release made `UseAntenna=true` with no broadcasting
+antenna a transport state called `DegradedNoAntenna`. That was wrong in both
+directions, and it is gone.
+
+The script can see whether same-construct `IMyRadioAntenna` blocks are working
+and broadcasting. It **cannot** see laser antennas, a player's suit antenna,
+radio range, or the fact that `UseAntenna=false` still delivers to everyone on
+the grid. Turning that single visible fact into a transport verdict would mean
+*withholding a message from a player standing in the base* because a mast was
+switched off — a false negative that costs an alert. Calling it `OK` regardless
+would be a false positive. So it is neither: it is reported, and behaviour does
+not depend on it.
+
+`UseAntenna=false` is a valid native setting and was never an IOPM error. IOPM
+will not switch controllers, enable an antenna, or widen `BroadcastTarget` to
+`Everyone` to get a message out.
+
+### A transition is consumed only by a successful send
+
+`AlertStep()` returns a message. It commits nothing. `AlertCommit()` — which
+advances `Ack`, sets `Ann`, resets the cooldown clock and increments the counter
+— runs **only after `SendMessage(string)` returned without throwing**.
+
+If the send throws: `SendErrors` increments, nothing is marked announced,
+`LastMessage` is unchanged, and the same transition is offered again next cycle
+until it gets through. An escalation arriving while an earlier message is still
+stuck simply supersedes it — the more severe message is the one that lands.
+
+"Announced" here means **handed to the controller without an exception**, and
+nothing more. `SendMessage(string)` returns `void`; there is no delivery
+acknowledgement in the API, and the script cannot see whether anyone read the
+line. Nothing in IOPM claims delivery.
 
 ### Diagnostics
 
@@ -529,9 +591,9 @@ Controller=Broadcast Controller IOPM
 ControllersFound=1
 ControllerWorking=True
 ComponentAvailable=True
-UseAntenna=true
-AntennasBroadcasting=1
 Transport=OK
+UseAntennaAdvisory=true
+AntennasBroadcastingAdvisory=1
 Alerts=3
 Suppressed=1
 Blocked=0
@@ -540,10 +602,19 @@ LastMessage=WAREHOUSE CRITICAL | Ingots 96%
 States=WH:INGOTS=Critical
 ```
 
-`States` lists only pools that are not Healthy (`AllHealthy` when none are), and
-shows `Critical(announced Warning)` when a transition is being held back. There
-is deliberately **no historical log**: Custom Data is a fixed budget, and an
-append-only alert history is the one thing guaranteed to exhaust it.
+| Key | Means exactly |
+|---|---|
+| `Alerts` | messages successfully handed to the controller, no exception thrown |
+| `Suppressed` | de-escalations held back by the cooldown flap guard |
+| `Blocked` | evaluations skipped because transport was not `OK` |
+| `SendErrors` | attempts where `SendMessage` threw |
+| `LastMessage` | the last **successfully handed** message — never a failed attempt |
+
+`States` lists only pools that are not Healthy-and-unannounced (`AllHealthy`
+when there are none), and marks anything observed but never announced:
+`WH:ORES=Critical/unannounced`. There is deliberately **no historical log**:
+Custom Data is a fixed budget, and an append-only alert history is the one thing
+guaranteed to exhaust it.
 
 ## What `Stalled=0` means — read before "fixing" stall detection
 

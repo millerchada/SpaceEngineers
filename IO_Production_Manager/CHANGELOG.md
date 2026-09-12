@@ -28,6 +28,228 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.40 CORRECTION — four alert-state defects found in review of `a0d861b`
+
+**Still the candidate. Still NOT accepted. Live UAT has not run.**
+
+Architecture was approved; the state handling was not. Review found four defects
+that all shared one root cause: **the code could not distinguish a level it had
+merely OBSERVED from a level it had actually ANNOUNCED**, and it treated calling
+`SendMessage` as equivalent to having announced something. Every one of them
+loses or invents a message, and none was reachable by a compiler.
+
+The engine now keeps three things per pool instead of two:
+
+| | |
+|---|---|
+| `Lvl` | what the readings say now — the hysteresis reference point |
+| `Ack` | the level already accounted for, observed *or* announced |
+| `Ann` | whether that level was actually announced — handed to the controller with no exception |
+
+### Defect 1 — a startup baseline fabricated an announcement
+
+`AlertStep(..., silent: true)` did `st.Sent = lvl`. A pool already Critical when
+the script loaded was recorded as though the player had been told, so its later
+return to Healthy emitted
+
+    RECOVERED | Ingots capacity back to 81%
+
+for a warning that was never sent. That directly violated the release's own
+stated invariant: *a recovery may only be sent for a problem that was announced.*
+
+The baseline now sets `Ack` and explicitly clears `Ann`. Required behaviour, all
+covered by tests:
+
+| Sequence | Result |
+|---|---|
+| start Healthy → Healthy | silent |
+| start Warning → Warning | silent |
+| start Warning → Healthy | **silent** |
+| start Critical → Healthy | **silent** |
+| start Warning → Critical | **Critical sent** |
+| start Critical → Warning | silent, nothing had been announced |
+| real Warning sent → Healthy | `RECOVERED`, as normal |
+
+This is *not* "suppress all recoveries". A recovery is sent exactly when the
+problem it ends was itself announced. The old test that codified the wrong
+behaviour — `baseline at 97 … recovery … RECOVERED` — is deleted and replaced by
+the seven rows above.
+
+### Defect 2 — transport-down startup could swallow a condition
+
+The first silent baseline ran before the `AlertCanSend()` gate, so: alerts on,
+controller offline, warehouse already Critical → baseline taken → controller
+restored → the condition never alerted.
+
+The fix is **not** to defer the baseline, which would have been worse. A
+baseline records what was true when alerting *started* — a fact about time, not
+about the controller — and deferring it until the controller returned would let
+a condition that arose *while it was offline* be absorbed as "it was already
+like that". Instead the decision is now an explicit, testable function:
+
+    AlertPass(active, alertOnStartup, canSend)
+      -> 1  baseline   (runs regardless of transport; announces nothing)
+      -> 2  evaluate and send (requires transport)
+      -> 0  skip       (transport down: no send, no state advanced)
+
+So a pre-existing condition stays silent whether or not the controller was up,
+and a condition that *arises* while it is down is still pending and still fires
+on restore. Both directions are tested end-to-end, not just as classification.
+
+### Defect 3 — `DegradedNoAntenna` contradicted the UAT contract, and was wrong anyway
+
+The code called it sendable; `uat/v2.4.40/plan.md` said it should block. Both
+could not be true — and on inspection **neither** was the right answer.
+
+The state is **removed**. `AlertTransport()` no longer takes `useAntenna` or
+`antennasBroadcasting` at all, and `AlertCanSend()` is now `transport == "OK"`.
+
+The reasoning, recorded because it will come up again: IOPM can see whether
+same-construct `IMyRadioAntenna` blocks are working and broadcasting. It cannot
+see laser antennas, a player's suit antenna, radio range, or the fact that
+`UseAntenna=false` still delivers to everyone on the grid. Turning that single
+visible fact into a transport verdict would mean **withholding a message from a
+player standing in the base because a mast was switched off** — a false negative
+that costs a real alert. Calling it `OK` unconditionally would be a false
+positive. So it is neither: the two antenna facts are reported as
+`UseAntennaAdvisory` and `AntennasBroadcastingAdvisory`, named so the diagnostic
+itself says it is advisory, and **no behaviour depends on them**.
+
+`_antBroadcasting` is kept because a count of same-construct radio antennas that
+are working and broadcasting is a *fact*, not an inference, and it costs one
+type check inside an enumeration that already runs. What was removed is the
+claim built on top of it. `Compact Antenna Moon` is not named anywhere in the
+runtime — antenna discovery stays by type, not by name.
+
+### Defect 4 — a send exception consumed the transition
+
+The old order advanced `Sent`, incremented the counter and set `LastMessage`,
+*then* called `SendMessage`. If it threw, only `SendErrors` moved — and because
+the state had already advanced, the alert was gone for good.
+
+`AlertStep()` now returns a message and **commits nothing**. `AlertCommit()` —
+which advances `Ack`, sets `Ann`, resets the cooldown clock, increments the
+counter and sets `LastMessage` — runs only from:
+
+    if (msg != "" && AlertSend(msg)) AlertCommit(key, msg);
+
+`AlertSend()` returns `bool`: true only when `SendMessage(string)` returned
+without throwing. On failure `SendErrors` increments, nothing is announced,
+`LastMessage` is untouched, and the same transition is re-derived next cycle
+until it gets through. An escalation arriving while an earlier message is stuck
+supersedes it — the more severe message lands, and the stuck one is not replayed
+afterwards. Cooldown and hysteresis are unchanged: `Since` still measures from
+the last *successful* send, so a retried de-escalation is not re-suppressed.
+
+"Announced" means **handed to the controller without an exception**, and nothing
+more. `SendMessage(string)` returns `void`; there is still no delivery
+acknowledgement and none is implied anywhere.
+
+### Diagnostics now say what they mean
+
+| Key | Means exactly |
+|---|---|
+| `Alerts` | messages successfully handed to the controller, no exception thrown |
+| `Suppressed` | de-escalations held by the cooldown flap guard |
+| `Blocked` | evaluations skipped because transport was not `OK` |
+| `SendErrors` | attempts where `SendMessage` threw |
+| `LastMessage` | the last **successfully handed** message — never a failed attempt |
+| `States` | non-Healthy pools, with `/unannounced` where a level was observed but never announced |
+
+No separate "attempted" counter was added. `Alerts` + `SendErrors` + `Blocked`
+already distinguish every case, and a fourth counter would cost characters to
+say nothing new.
+
+### Tests
+
+`tests/tests_alert_engine.py`: **87 checks**, up from 61. New coverage for
+observed-vs-announced (all seven required sequences), commit-only-on-successful
+send, retry after failure, escalation past a stuck transition, the `AlertPass`
+matrix, and the two transport-down-at-startup sequences end-to-end. The driver
+now has three tick helpers — `SC` (send succeeded), `SN` (send failed), `SB`
+(silent baseline) — because a suite that only ever simulated success could not
+have caught defect 4.
+
+**The suite was verified to fail the old behaviour**, by mutating the corrected
+source back toward each original defect one at a time:
+
+    defect 1  baseline marks the level ANNOUNCED        2 of 87 checks FAILED
+    defect 2  baseline deferred until transport is up   1 of 87 checks FAILED
+    defect 3  DegradedNoAntenna treated as sendable     1 of 87 checks FAILED
+    defect 4  commit folded into the step               7 of 87 checks FAILED
+
+A regression suite that has not been shown to fail the bug it was written for is
+a suite nobody has tested.
+
+`tests/tests_invariants.py`: **27 checks + 9 negative controls**, up from 22 + 6.
+Three new mutants (a baseline that fabricates an announcement; a commit without a
+successful send; antenna state smuggled back into the transport verdict) and
+five new rules that name the exact lines — because each defect was wrong by a
+single token, and a looser pattern would have matched the broken version just as
+happily.
+
+v2.4.39 still reports NOT APPLICABLE for the alert suites and still passes its
+own gate unchanged.
+
+### Results
+
+    RELEASE GATE PASSED   (v2.4.40 and v2.4.39 both)
+
+    1. negative controls    CS0136 detected, Comparison<T> screened     PASS
+    2. positive control     v2.4.40 compiles clean                      PASS
+    3. catalog integrity    45 products / 47 recipes / 0 pending        PASS
+       dependency closure   COMPLETE
+    4. tests_alert_engine        87 checks                              PASS
+       tests_canonicalize_stock  52 checks                              PASS
+       tests_invariants          27 checks + 9 negative controls        PASS
+       tests_yield_math                                                 PASS
+    5. transform verification + artifact compile gate                   PASS
+
+    source   167,311 chars
+    artifact  93,102 chars
+    headroom   6,898 chars
+
+### Character budget — targeted pass done, soft target still missed
+
+Correctness cost characters: `AlertCommit` and `AlertPass` are new, and removing
+`DegradedNoAntenna` gave some back. Net **+134** over the reviewed build
+(92,968 → 93,102), which is **1,102 over the 92,000 soft target**.
+
+Two alert-specific compactions were tried and measured rather than assumed:
+
+- merging the four controller diagnostics into one line — **saved 58 chars**, and
+  was **reverted**. It cost the UAT checklist its individually-greppable keys
+  (`ControllersFound=1` etc.) for a rounding error.
+- shortening the two config-error literals, whose "capacity alerts suspended"
+  tail is already said by `Transport=ConfigError` — **kept**.
+
+Nothing else in the alert subsystem is duplicated or padded. Getting the
+remaining ~1,100 would mean deleting runtime diagnostics or collapsing the pure
+functions that make the extraction-based test suite possible — both explicitly
+out of bounds, and both a bad trade against a soft target. **Reported rather than
+forced, as instructed.**
+
+Hard ceiling 100,000 is not at risk. A dedicated size-reclamation pass before
+v2.4.41 is the right place for this.
+
+### Still requires live Chad UAT
+
+`uat/v2.4.40/plan.md`, rewritten to match the corrected semantics. New probes
+that specifically cover these defects:
+
+- **2.12** restart while a pool is Warning/Critical, then return it to Healthy →
+  **no `RECOVERED`**, and `States` shows `/unannounced`
+- **2.13** escalation past a baseline still alerts
+- **2.14** enable alerts with the controller down and a pool already high →
+  silent on restore; but a condition that *arises* while down **must** fire on
+  restore
+- **2.15** a failed send is retried, not lost
+- **1.11** antenna off with `UseAntenna=true` → `Transport=OK` and the message is
+  **still sent**; `Blocked` does not move
+
+Probe 1.1 — the in-game compile, i.e. whitelist acceptance of
+`Components.TryGet` — remains the one gate that cannot be closed from the repo.
+
 ## 2.4.40 — first-stage alerts: Broadcast Controller transport + capacity state engine
 
 **Gate PASSED. Live UAT NOT RUN — `uat/v2.4.40/plan.md`. v2.4.39 remains the
@@ -157,7 +379,7 @@ and it is what lets a blocked transport be handled honestly (below).
 | `Transport` | Sends? |
 |---|---|
 | `Disabled` / `ConfigError` / `ControllerNotFound` / `AmbiguousName` / `ControllerNotWorking` / `ComponentUnavailable` | no |
-| `DegradedNoAntenna` / `OK` | yes |
+| `OK` | yes |  *(`DegradedNoAntenna` existed in `a0d861b` and was removed - see the correction entry above)*
 
 Duplicate exact-name controllers **fail closed**: every match is counted rather
 than the first one taken, so two blocks with the configured name produce
@@ -267,7 +489,7 @@ every version regardless.
     5. transform verification + artifact compile gate                   PASS
 
     source   165,318 chars
-    artifact  92,968 chars   (saved 72,350; 43.8%)
+    artifact  92,968 chars   (saved 72,350; 43.8%)   <- superseded, see correction above
     headroom   7,032 chars
     737 string literals preserved byte-identical
     code structure {=412 }=412 (=2111 )=2111 [=357 ]=357 ;=2086

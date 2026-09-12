@@ -5,6 +5,10 @@ catalog, closure, 4 suites, transform verification) but nothing below has been
 observed in the game. Until this file is answered, **v2.4.39 remains the
 accepted runtime release.**
 
+This plan matches the **corrected** state semantics. An earlier draft of both
+the code and this file disagreed about `DegradedNoAntenna`; that state no longer
+exists — see probe 1.11 and §*Antenna state is advisory* in the README.
+
 Blocks this uses, both already built:
 
 | Role | Block name |
@@ -16,6 +20,19 @@ Capture evidence into this directory, verbatim, per `uat/README.md` — prefer
 two captures per test (the state that proves intent, the state that proves the
 outcome). Name files after the probe: `probe-1-discovery.txt`,
 `capacity-warning.txt`, and so on.
+
+---
+
+## The three words this plan turns on
+
+| | |
+|---|---|
+| **observed** | IOPM has seen the level. Costs nothing and tells nobody. |
+| **announced** | the message was handed to the controller and `SendMessage` did not throw. |
+| **delivered** | **unknowable.** The API has no acknowledgement. Nothing here tests it, and nothing in IOPM claims it. |
+
+A recovery is only ever sent for a problem that was *announced*. That is what
+probes 2.12 and 2.13 exist to prove.
 
 ---
 
@@ -43,7 +60,7 @@ at terminal properties. Capture the exact compiler message into
 
 ## Probe 1 — transport, before any threshold is touched
 
-Paste `IO_Production_Manager_v2.4.40.min.cs` (92,968 chars) into the PB.
+Paste `IO_Production_Manager_v2.4.40.min.cs` (93,102 chars) into the PB.
 
 Leave `[Alerts] Enabled=false` for the first recompile and confirm the script
 still runs exactly as v2.4.39 did — `[IOPM.Status] State=Running`, sorting and
@@ -72,32 +89,38 @@ in by hand.
 | 1.2 | exact-name discovery | `ControllersFound=1`, `ControllerWorking=True` |
 | 1.3 | component resolves | `ComponentAvailable=True` |
 | 1.4 | transport healthy | `Transport=OK` |
-| 1.5 | antenna seen | `AntennasBroadcasting=1` (with `Compact Antenna Moon` on and broadcasting) |
-| 1.6 | `UseAntenna` read back | `UseAntenna=` matches what the block's own terminal shows |
-| 1.7 | silent startup | `Alerts=0`, `LastMessage=none`, `States=AllHealthy` (assuming no pool is over 85%) |
+| 1.5 | antenna seen (advisory) | `AntennasBroadcastingAdvisory=1` with `Compact Antenna Moon` on and broadcasting |
+| 1.6 | `UseAntenna` read back (advisory) | `UseAntennaAdvisory=` matches the block's own terminal |
+| 1.7 | silent startup | `Alerts=0`, `LastMessage=none` |
 
 **1.7 is the one to read carefully.** If any pool is already above 85% when
 alerting is switched on, the correct behaviour is *silence* — `States` will show
-e.g. `WH:ORES=Warning` with `Alerts=0`, because the baseline adopted the
-condition rather than announcing it. That is `AlertOnStartup=false` working, not
-a failure to alert.
+e.g. `WH:ORES=Warning/unannounced` with `Alerts=0`. The `/unannounced` suffix is
+the point: the level was **observed**, not announced. That is
+`AlertOnStartup=false` working, not a failure to alert.
 
 ### 1.8 — does `SendMessage(string)` actually reach chat?
 
 The quickest forcing function without waiting on a warehouse: temporarily set
 `WarehouseWarningPercent` to just under a pool's current fill (e.g. `Ores` sits
 around 95%, so set `WarehouseWarningPercent=50`, `WarehouseCriticalPercent=99`).
-Next cycle should produce exactly one `WAREHOUSE WARNING | Ores nn%` in chat.
 
-Capture the chat line **and** `[IOPM.Alerts]` in the same file. Then put the
-thresholds back and note that the restore produces a `RECOVERED` line.
+Careful — the threshold change does **not** re-baseline. The pool was already
+observed at `Warning/unannounced`; lowering the threshold does not change its
+level, so no message appears. To force a real transition, set
+`WarehouseWarningPercent=50` **and** `WarehouseCriticalPercent=90`, which moves
+`Ores` from Warning to Critical — a genuine escalation past the baseline, which
+**does** send.
+
+Capture the chat line **and** `[IOPM.Alerts]` in the same file. Confirm `Alerts`
+went to `1` and `LastMessage` shows that exact line.
 
 ### 1.9 — native settings are the player's
 
 On the controller block itself, cycle `BroadcastTarget` through Owner → Faction
 → Everyone and toggle `UseAntenna`. After each change, confirm IOPM has **not**
 written any of them back: the terminal still shows what you set, and
-`[IOPM.Alerts] UseAntenna` merely reports it.
+`UseAntennaAdvisory` merely reports it.
 
 With `UseAntenna=false` the expected transport is `OK`, **not** an error — that
 is a valid grid-local configuration.
@@ -105,11 +128,28 @@ is a valid grid-local configuration.
 ### 1.10 — range
 
 With `UseAntenna=true` and `Compact Antenna Moon` broadcasting, walk out past the
-antenna's radius and trigger another alert (repeat the 1.8 trick). Record where
-reception stops. This measures the *game's* antenna behaviour, not IOPM's: the
-script cannot see your suit antenna or your range, and never claims it can.
+antenna's radius and trigger another alert. Record where reception stops.
 
-### 1.11 — failure modes are non-fatal
+This measures the *game's* antenna behaviour, not IOPM's. `Alerts` will still
+increment out of range, because it counts messages **handed to the controller**.
+That is not a bug — the script cannot see your suit antenna or your range, and
+it deliberately does not pretend to.
+
+### 1.11 — antenna off is NOT a transport failure
+
+Turn `Compact Antenna Moon` **off** while `UseAntenna=true`, then force a
+transition as in 1.8.
+
+Expected: `Transport=OK`, `AntennasBroadcastingAdvisory=0`, and the message **is
+still sent** (`Alerts` increments, `Blocked` does not).
+
+That is deliberate. IOPM can see one antenna fact and cannot see laser antennas,
+suit antennas, range, or that `UseAntenna=false` still reaches everyone on the
+grid. Refusing to send on that basis would withhold an alert from a player
+standing in the base because a mast was switched off. The fact is reported;
+behaviour does not depend on it.
+
+### 1.12 — real failure modes are non-fatal and do not consume alerts
 
 Do these one at a time, letting a full cycle run between each, and confirm the
 script never throws and keeps running:
@@ -118,12 +158,9 @@ script never throws and keeps running:
 |---|---|
 | turn `Broadcast Controller IOPM` **off** | `ControllerNotWorking` |
 | rename it to something else | `ControllerNotFound` |
-| rename a **second** block to `Broadcast Controller IOPM` | `AmbiguousName` — and `ControllersFound=2` |
-| restore the name, turn off `Compact Antenna Moon`, with `UseAntenna=true` | `DegradedNoAntenna` |
+| rename a **second** block to `Broadcast Controller IOPM` | `AmbiguousName`, `ControllersFound=2` |
 
-While transport is down, `Blocked` should climb and `Alerts` should **not**.
-Restore the controller and confirm the next genuine transition still speaks —
-that is the proof the state engine was not advanced against messages nobody got.
+While transport is not `OK`, `Blocked` climbs and `Alerts` does **not**.
 
 ---
 
@@ -139,7 +176,7 @@ trust.
 | 2.1 | bring the pool from below 85% to ~91% | **exactly one** `WAREHOUSE WARNING \| <cat> 91%`; `Alerts` +1 |
 | 2.2 | push it to ~92%, let several cycles run | **no further message**; `Alerts` unchanged |
 | 2.3 | push past 95% to ~96% | `WAREHOUSE CRITICAL \| <cat> 96%`; `Alerts` +1 |
-| 2.4 | let several cycles run at 96–98% | **no repeat**, no "still critical" — `Alerts` unchanged |
+| 2.4 | let several cycles run at 96–98% | **no repeat**, no "still critical"; `Alerts` unchanged |
 | 2.5 | drop to ~94% | **no message** — inside the 95−2 hysteresis band |
 | 2.6 | drop to ~92% within 5 min of 2.3 | **no message**; `Suppressed` +1 |
 | 2.7 | wait out `CooldownSeconds`, still ~92% | `WAREHOUSE WARNING \| <cat> 92%` |
@@ -155,12 +192,64 @@ there is alert spam, and the release should be rejected rather than tuned.
 Fill the Overflow pool past 95% and confirm the message reads
 `OVERFLOW CRITICAL | Overflow nn%`, not `WAREHOUSE`.
 
-### 2.12 — a restart does not blast
+### 2.12 — restart with a problem already present emits NO recovery
 
-With the pool sitting in Warning or Critical, recompile the PB (or toggle it off
-and on). Expected: **silence**, and `[IOPM.Alerts] States` showing the pool at
-its current level with `Alerts=0` for the new session. Then move the pool and
-confirm alerting resumes normally.
+**This is the regression test for the defect review found in the first
+v2.4.40 build.** In that build a startup baseline was recorded as if it had been
+announced, so returning to Healthy produced a `RECOVERED` line for a warning the
+player never received.
+
+1. Get a pool into Warning or Critical and let its alert be sent normally, or
+   simply find one already high.
+2. With `AlertOnStartup=false`, **recompile the PB** (or toggle it off and on).
+3. Confirm silence, and that `[IOPM.Alerts] States` shows the pool with the
+   **`/unannounced`** suffix — e.g. `WH:AMMO=Critical/unannounced` — and
+   `Alerts=0` for the new session.
+4. Now bring that pool **directly back to Healthy**, below the hysteresis exit.
+
+**Expected: NO `RECOVERED` message at all.** `Alerts` stays `0`.
+
+Then move the pool up again into Warning and confirm alerting resumes normally —
+the baseline must not have disabled anything, only declined to invent history.
+
+### 2.13 — escalation past a baseline still alerts
+
+With the pool sitting at `Warning/unannounced` after a restart, push it past
+95%. **Expected: `WAREHOUSE CRITICAL` is sent.** A baseline suppresses replay of
+what was already true; it must not suppress something genuinely getting worse.
+
+### 2.14 — transport unavailable during the first baseline
+
+**Regression test for the second review defect.**
+
+1. Set `Enabled=false`. Turn `Broadcast Controller IOPM` **off** (or rename it).
+2. Get a pool clearly **Healthy** (well below 85%).
+3. Set `Enabled=true`. Confirm `Transport=ControllerNotWorking` (or
+   `ControllerNotFound`) and that `Blocked` is climbing while `Alerts=0`.
+4. **While transport is still down**, fill that pool past 95%.
+5. Restore the controller.
+
+**Expected: `WAREHOUSE CRITICAL` is sent once transport returns.** The condition
+arose while the controller was offline and must not have been silently absorbed
+into the baseline.
+
+Then the complementary case, which should be silent:
+
+1. With transport down, enable alerts while a pool is **already** Critical.
+2. Restore the controller without changing the pool.
+
+**Expected: silence** — that condition predates alerting, exactly as if the
+controller had been available the whole time. `States` shows `/unannounced`.
+
+### 2.15 — a send that fails does not lose the alert
+
+Harder to force deliberately, so treat it as opportunistic: if `SendErrors` is
+ever non-zero, confirm that `Alerts` did **not** increment for that attempt,
+`LastMessage` did not change to the failed line, and the message appears on a
+later cycle once the controller is healthy.
+
+The nearest reliable proxy is 1.12 + 2.14: a transition that exists while
+transport is not `OK` must still be delivered after transport recovers.
 
 ---
 
