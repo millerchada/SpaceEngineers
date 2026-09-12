@@ -14,7 +14,7 @@ Blocks this uses, both already built:
 | Role | Block name |
 |---|---|
 | Broadcast Controller | `Broadcast Controller IOPM` |
-| Radio antenna | `Compact Antenna Moon` |
+| Radio antenna | `Compact Antenna Moon` — also the antenna-wake target, probe 4 |
 
 Capture evidence into this directory, verbatim, per `uat/README.md` — prefer
 two captures per test (the state that proves intent, the state that proves the
@@ -60,7 +60,11 @@ at terminal properties. Capture the exact compiler message into
 
 ## Probe 1 — transport, before any threshold is touched
 
-Paste `IO_Production_Manager_v2.4.40.min.cs` (93,102 chars) into the PB.
+Paste `IO_Production_Manager_v2.4.40.min.cs` (96,801 chars) into the PB.
+
+**Do not start this UAT yet.** At 96,801 chars the candidate leaves only 3,199
+characters of PB headroom, and that is a decision to take deliberately rather
+than discover at the keyboard. See the v2.4.40 antenna-wake CHANGELOG entry.
 
 Leave `[Alerts] Enabled=false` for the first recompile and confirm the script
 still runs exactly as v2.4.39 did — `[IOPM.Status] State=Running`, sorting and
@@ -72,12 +76,18 @@ Then add / set:
 [Alerts]
 Enabled=true
 BroadcastController=Broadcast Controller IOPM
+WakeAntennaForAlerts=true
+AlertAntenna=Compact Antenna Moon
 WarehouseWarningPercent=85
 WarehouseCriticalPercent=95
 CooldownSeconds=300
 CapacityHysteresisPercent=2
 AlertOnStartup=false
 ```
+
+This is the real configuration to test, antenna wake included. Run probe 1
+first with `WakeAntennaForAlerts=false` so transport is proven on its own before
+a second moving part is added.
 
 Remember the upgrade rule: the default block is written only when Custom Data is
 **completely empty**, so on an existing PB the `[Alerts]` section has to be typed
@@ -136,6 +146,9 @@ That is not a bug — the script cannot see your suit antenna or your range, and
 it deliberately does not pretend to.
 
 ### 1.11 — antenna off is NOT a transport failure
+
+Run this with `WakeAntennaForAlerts=false`, or the wake feature will simply turn
+the antenna back on and you will be testing probe 4 instead.
 
 Turn `Compact Antenna Moon` **off** while `UseAntenna=true`, then force a
 transition as in 1.8.
@@ -250,6 +263,146 @@ later cycle once the controller is healthy.
 
 The nearest reliable proxy is 1.12 + 2.14: a transition that exists while
 transport is not `OK` must still be delivered after transport recovers.
+
+---
+
+## Probe 4 — antenna wake, with `Compact Antenna Moon`
+
+Only start this once probe 1 and probe 2 have passed with
+`WakeAntennaForAlerts=false`. Transport and the state engine must be known-good
+before a block-moving feature is layered on top of them.
+
+Now set:
+
+```ini
+WakeAntennaForAlerts=true
+AlertAntenna=Compact Antenna Moon
+```
+
+and make sure the Broadcast Controller has `UseAntenna=true` — with
+`UseAntenna=false` the antenna is never touched and none of this applies.
+
+Read `[IOPM.Alerts]` every step. The keys that matter here are
+`AlertAntennaFound`, `AlertAntennaEnabled`, `WakeState`, `WakeOwned`,
+`WakeNote`, `Alerts` and `Blocked`.
+
+### 4.1 — antenna already ON
+
+Leave `Compact Antenna Moon` switched **on**. Force a transition (the 1.8
+threshold trick).
+
+Expected:
+
+- the message is sent, `Alerts` +1
+- the antenna **stays on** throughout
+- `WakeOwned=False` at every point — IOPM never claims a block it did not switch
+- `WakeState` never leaves `Idle`
+
+The failure to watch for is IOPM switching the antenna off afterwards. It did
+not turn it on, so it must never turn it off.
+
+### 4.2 — antenna initially OFF (the whole point of the feature)
+
+Switch `Compact Antenna Moon` **off**. Confirm `AlertAntennaEnabled=False` and
+`WakeState=Idle`. Force a transition.
+
+Expected, in this order — and the ordering is the test:
+
+| # | Expect |
+|---|---|
+| 1 | the antenna turns **on** |
+| 2 | **no message is committed in that same update** — `Alerts` unchanged, `WakeState=Waking`, `WakeOwned=True` |
+| 3 | a **later** update sends the alert — `Alerts` +1, `WakeState=Ready` |
+| 4 | the antenna returns to **off** |
+| 5 | `Alerts` incremented **exactly once** for that transition |
+| 6 | `WakeState=Idle`, `WakeOwned=False` |
+
+Capture at least two files: one during `Waking` (which proves nothing was sent
+in the enabling update) and one after the restore. A single end-state capture
+cannot tell "enabled then sent later" from "enabled and sent immediately", and
+that distinction is the reason this is a state machine at all.
+
+### 4.3 — several alerts share one wake
+
+With the antenna off, arrange for **two or more** pools to cross a threshold in
+the same evaluation (lowering `WarehouseWarningPercent` sharply is the easy way).
+
+Expected: **one** enable, all the messages, **one** restore. `Alerts` increases
+by the number of messages; the antenna is toggled once, not once per alert.
+
+### 4.4 — failed transport during the sequence
+
+Start 4.2 and, while `WakeState=Waking`, turn `Broadcast Controller IOPM`
+**off**.
+
+Expected:
+
+- no announcement is committed — `Alerts` unchanged
+- `Compact Antenna Moon` is put **back to off** (IOPM restores what it changed
+  even though the send never happened)
+- `Blocked` increments, `Transport=ControllerNotWorking`
+- the alert transition is **still pending**
+
+Then switch the controller back on. The alert must still arrive — and the wake
+sequence must run again from the start to deliver it.
+
+### 4.5 — the player wins
+
+While `WakeOwned=True`, switch `Compact Antenna Moon` **off yourself**.
+
+Expected: IOPM **lets go** — `WakeOwned` becomes `False` — and does not
+immediately force it back on in that same update. Your setting is the setting.
+(It may wake again on a later evaluation if the alert is still pending; what it
+must not do is fight you inside the sequence.)
+
+### 4.6 — fail closed on a bad wake configuration
+
+One at a time, with an alert pending:
+
+| Do | Expected |
+|---|---|
+| `AlertAntenna=` (empty) with wake on | `WakeState=Error`, `WakeNote` says so, `Blocked` climbs, `Alerts` does **not** |
+| `AlertAntenna=Nonexistent Antenna` | `AlertAntennaFound=0`, `WakeState=Error`, nothing sent |
+| rename a second antenna to `Compact Antenna Moon` | `AlertAntennaFound=2`, `WakeState=Error`, nothing sent — **no arbitrary pick** |
+
+In every case the transition must still be pending afterwards: fix the config
+and the alert should then arrive.
+
+### 4.7 — `EnableBroadcasting=false` is yours, not IOPM's
+
+Set `EnableBroadcasting=false` on `Compact Antenna Moon` and leave it powered
+off. Trigger an alert.
+
+Expected: IOPM switches `Enabled` on and back off as usual, reports
+`AlertAntennaBroadcasting=False`, and **never writes `EnableBroadcasting`**.
+Confirm on the block's own terminal that the setting is untouched afterwards.
+
+### 4.8 — restart interruption **cannot strand the antenna on**
+
+This is the edge case the `Storage` marker exists for, and it is worth being
+deliberate about.
+
+1. Switch `Compact Antenna Moon` **off**.
+2. Force a transition and watch for `WakeState=Waking` / `WakeOwned=True` — the
+   antenna is now on **because IOPM turned it on**.
+3. **While in that state**, recompile the programmable block (edit and re-save
+   the script, or use Recompile). That destroys all in-memory alert state.
+
+Expected: within a cycle or two of the restart, `Compact Antenna Moon` is
+switched back **off** by itself, and `WakeNote` reads
+`restored Compact Antenna Moon after an interrupted wake`.
+
+Then confirm the marker is not sticky: let a cycle run and check `WakeNote`
+clears on the next wake, and that a normal alert still works.
+
+Worth trying the harsher version too if you can: save and reload the world while
+`WakeOwned=True`. Same expected outcome — the marker is written to `Storage`
+*before* the antenna is enabled, so it survives anything that does not call
+`Save()`.
+
+**If the antenna is ever left on after a restart with no alert pending, that is a
+defect — record it and stop.** Stranding a player's block is the one outcome
+this feature is not allowed to have.
 
 ---
 

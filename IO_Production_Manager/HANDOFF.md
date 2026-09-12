@@ -11,10 +11,11 @@ repo at this commit, not recalled.
 > v2.4.39 remains the accepted runtime release and the thing to paste. The
 > v2.4.40 scope, API-verification findings and open UAT plan are in
 > `CHANGELOG.md` and `uat/v2.4.40/plan.md`. One deviation is recorded there: the
-> v2.4.40 artifact is 93,102 chars (6,898 headroom), ~1% past its 92,000 target,
-> so the next alert workstream has less room than this checkpoint implies. Review
-> of `a0d861b` found four alert-state defects (all corrected); the CHANGELOG
-> correction entry is the record.
+> v2.4.40 artifact is **96,801 chars (3,199 headroom)** after the opt-in antenna
+> wake feature. That is 3.2% of the PB ceiling and **needs a decision before live
+> UAT** — see the antenna-wake CHANGELOG entry, which lays out three options and
+> a recommendation. Review of `a0d861b` found four alert-state defects, all
+> corrected; the CHANGELOG correction entry is that record.
 > Recommended next work (below) is unchanged and none of it has been started.
 
 ## Current release

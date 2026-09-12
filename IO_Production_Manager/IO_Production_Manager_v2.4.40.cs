@@ -86,6 +86,8 @@ class Config {
   public double AlertWarnPct = 85, AlertCritPct = 95, AlertHystPct = 2;
   public double AlertCooldownSec = 300;
   public bool AlertOnStartup = false;
+  public bool WakeAntenna = false;   // opt-in; existing installs are unaffected until set
+  public string AlertAntenna = "";   // no default name: IOPM must never guess which block to power
   public string AlertCfgError = ""; // non-empty = capacity alerting is refused, fail closed
   public Dictionary<string, double> StockTargets = DD();
   public Dictionary<string, string> BlueprintOverrides = DS();
@@ -383,6 +385,8 @@ void LoadConfig() {
   c.AlertCooldownSec = Math.Max(0, _ini.Get("Alerts", "CooldownSeconds").ToDouble(300));
   c.AlertHystPct = Math.Max(0, Math.Min(50, _ini.Get("Alerts", "CapacityHysteresisPercent").ToDouble(2)));
   c.AlertOnStartup = _ini.Get("Alerts", "AlertOnStartup").ToBoolean(false);
+  c.WakeAntenna = _ini.Get("Alerts", "WakeAntennaForAlerts").ToBoolean(false);
+  c.AlertAntenna = _ini.Get("Alerts", "AlertAntenna").ToString("").Trim();
   // FAIL CLOSED on an unusable threshold pair rather than guessing what the player meant. With
   // Critical <= Warning the two bands overlap and every Warning is also a Critical, so the
   // state engine would be answering a question the config never really asked.
@@ -442,7 +446,7 @@ void WriteDefaultCustomData() {
 "[Production]\nEnabled=false\nAllowSurvivalKitFallback=false\nStallDetectionCycles=5\nInputRecoveryEnabled=true\nRecoveryCooldownCycles=6\n" +
 "[Docking]\nEnabled=true\nUnloadDocked=true\nServiceLoadouts=true\nLoadoutBorrowPercent=25\nUnloadConnectorInventory=true\nUnloadCargo=true\nUnloadDrills=true\nSeedLoadoutTemplate=true\n" +
 "[Display]\nManageFonts=true\nStatusFontSize=0.8\nStockFontSize=0.8\nStockRowsPerPage=0\n" +
-"[Alerts]\nEnabled=false\nBroadcastController=Broadcast Controller IOPM\nWarehouseWarningPercent=85\nWarehouseCriticalPercent=95\nCooldownSeconds=300\nCapacityHysteresisPercent=2\nAlertOnStartup=false\n" +
+"[Alerts]\nEnabled=false\nBroadcastController=Broadcast Controller IOPM\nWarehouseWarningPercent=85\nWarehouseCriticalPercent=95\nCooldownSeconds=300\nCapacityHysteresisPercent=2\nAlertOnStartup=false\nWakeAntennaForAlerts=false\nAlertAntenna=\n" +
 "[Stock]\nSteelPlate=10000\nConstruction=5000\nMotor=1000\n" +
 "[BlueprintOverrides]\nExampleItem=\n";
 }
@@ -493,6 +497,7 @@ void Discover() {
   _bcBlock = null;
   _bcFound = 0;
   _antBroadcasting = 0;
+  _ants.Clear();
   for (int i = 0; i < CATS.Length; i++) _pools[CATS[i]] = new List<CI>();
   List<IMyTerminalBlock> all = new List<IMyTerminalBlock>();
   GridTerminalSystem.GetBlocks(all);
@@ -519,7 +524,10 @@ void Discover() {
     // never enables one, and never claims a message reached a player: the script cannot see a
     // suit antenna, radio range, or whether anyone read the chat line.
     IMyRadioAntenna ra = b as IMyRadioAntenna;
-    if (ra != null && ra.IsWorking && ra.IsBroadcasting) _antBroadcasting++;
+    if (ra != null) {
+      _ants.Add(ra); // small: a base has a handful. Both name lookups read this one list.
+      if (ra.IsWorking && ra.IsBroadcasting) _antBroadcasting++;
+    }
     // LOCAL connectors: ALWAYS dock anchors regardless of config; transfer SOURCES only.
     // UnloadConnectorInventory=false gates inventory routing ONLY, never dock discovery.
     IMyShipConnector lc = b as IMyShipConnector;
@@ -2422,6 +2430,114 @@ static string AlertTransport(bool enabled, string cfgError, int found, bool work
 }
 static bool AlertCanSend(string transport) { return transport == "OK"; }
 // </alert-transport>
+// <alert-wake>
+// ANTENNA WAKE. Opt-in, off by default. If the Broadcast Controller is set to UseAntenna and
+// the player's radio antenna is normally powered down, IOPM may switch that ONE named antenna
+// on, let the game settle for an execution, send, and switch it back off.
+// THE ONLY BLOCK SETTING THE ALERT SUBSYSTEM MAY WRITE IS Enabled, ON THE CONFIGURED ANTENNA.
+// Not Radius, not EnableBroadcasting, not a name, not anything on the controller.
+// IOPM RESTORES ONLY WHAT IOPM CHANGED. An antenna that was already on is never switched off.
+const int WK_IDLE = 0, WK_WAKING = 1, WK_READY = 2, WK_ERR = 3;
+static readonly string[] WKN = new string[] { "Idle", "Waking", "Ready", "Error" };
+// Actions. Deliberately an enum of verbs rather than a bag of booleans: the caller's switch is
+// then exhaustive, and every reachable decision is one row in the test table.
+const int WA_NONE = 0, WA_SEND = 1, WA_WAKE = 2, WA_REST = 3, WA_FAIL = 4, WA_DROP = 5;
+// What this execution should do. Pure, so tests/tests_alert_engine.py drives every row of it.
+//   owned     - IOPM switched this antenna on and still owes the player a restore
+//   antUsable - exactly one same-construct radio antenna carries the configured name, and it
+//               is still the same block we woke (a rename mid-sequence makes this false)
+//   pending   - there is a real alert message waiting. NO PENDING ALERT, NO ANTENNA CHANGE:
+//               a cycle merely running must never move a block.
+static int WakeAction(bool wakeCfg, bool useAntenna, bool antUsable, bool antEnabled, bool pending, bool owned) {
+  if (owned) {
+    // Withdrawn config, or the antenna went away under us: undo our change and stand down.
+    if (!wakeCfg || !useAntenna || !antUsable) return WA_REST;
+    // The player switched it off mid-sequence. Their setting wins; we simply stop claiming it.
+    if (!antEnabled) return WA_DROP;
+    return pending ? WA_SEND : WA_REST;
+  }
+  if (!wakeCfg || !useAntenna) return pending ? WA_SEND : WA_NONE; // antenna never touched
+  if (!pending) return WA_NONE;
+  if (!antUsable) return WA_FAIL;   // fail closed: nothing sent, the transition stays pending
+  return antEnabled ? WA_SEND : WA_WAKE;
+}
+// </alert-wake>
+List<IMyRadioAntenna> _ants = new List<IMyRadioAntenna>();
+IMyRadioAntenna _wkAnt;   // resolved from config this cycle; null unless exactly one match
+IMyRadioAntenna _wkOwn;   // the antenna WE switched on; non-null exactly while we owe a restore
+int _wkFound, _wkState;
+bool _wkEnabled, _wkBroadcast, _wkRecovered;
+string _wkErr = "";
+List<string> _alPendK = new List<string>(), _alPendM = new List<string>();
+// EXACT name, same construct, EXACTLY ONE match. Never "the first antenna found", never a
+// fallback to some other antenna - waking a block the player did not nominate is not a
+// convenience, it is IOPM operating machinery it was not asked to operate.
+void WakeResolve() {
+  _wkAnt = null; _wkFound = 0; _wkEnabled = false; _wkBroadcast = false;
+  if (_cfg.AlertAntenna == "") return;
+  for (int i = 0; i < _ants.Count; i++)
+    if (string.Equals(_ants[i].CustomName, _cfg.AlertAntenna, OIC)) {
+      _wkFound++;
+      if (_wkAnt == null) _wkAnt = _ants[i];
+    }
+  if (_wkFound != 1) { _wkAnt = null; return; } // duplicates fail closed, exactly like the controller
+  try { _wkEnabled = _wkAnt.Enabled; _wkBroadcast = _wkAnt.EnableBroadcasting; }
+  catch { _wkAnt = null; _wkFound = 0; }
+}
+// STORAGE IS WRITTEN FIRST, AND THIS ORDER IS THE WHOLE RESTART-SAFETY ARGUMENT.
+// Alert state is in memory and dies with the script. If the PB is recompiled, reloaded or the
+// world reloaded between switching the antenna on and switching it back off, nothing in RAM
+// remembers that IOPM owes a restore - and the player is left with an antenna that IOPM turned
+// on and will never turn off. One string in Storage survives that, and it holds nothing else:
+// not the alert engine, not the state machine, just "this antenna is on because of me".
+// Marking BEFORE the write means a crash in between leaves a stale marker and an antenna that
+// is still off - harmless, and WakeRecover simply clears it. The reverse order could strand it.
+void WakeOn() {
+  try {
+    Storage = _cfg.AlertAntenna;
+    _wkAnt.Enabled = true;
+    _wkOwn = _wkAnt;
+    _wkState = WK_WAKING;
+    _wkErr = "";
+  } catch { _wkOwn = null; Storage = ""; _wkState = WK_ERR; _wkErr = "enable failed"; }
+}
+void WakeOff() {
+  try {
+    if (_wkOwn != null) _wkOwn.Enabled = false;
+  } catch {
+    // Keep ownership AND the Storage marker so the restore is retried next cycle and survives
+    // a restart. Giving up here is how an antenna gets stranded on.
+    _wkState = WK_ERR; _wkErr = "restore failed"; return;
+  }
+  _wkOwn = null;
+  Storage = "";
+  _wkState = WK_IDLE;
+  _wkErr = "";
+}
+// Stop claiming the antenna without touching it. Used when the player switched it off
+// themselves mid-sequence: their action is the setting, and re-asserting ours would be IOPM
+// fighting the player over a block they own.
+void WakeDrop() {
+  _wkOwn = null;
+  Storage = "";
+  if (_wkState != WK_ERR) _wkState = WK_IDLE;
+}
+// One shot, on the first evaluation after a load, BEFORE the Enabled gate - a stranded antenna
+// must be released even if alerting has since been switched off entirely.
+void WakeRecover() {
+  if (_wkRecovered) return;
+  _wkRecovered = true;
+  string n = Storage;
+  if (string.IsNullOrEmpty(n)) return;
+  int found = 0;
+  IMyRadioAntenna a = null;
+  for (int i = 0; i < _ants.Count; i++)
+    if (string.Equals(_ants[i].CustomName, n, OIC)) { found++; if (a == null) a = _ants[i]; }
+  Storage = "";
+  if (found != 1) { _wkErr = "interrupted wake: " + n + " no longer resolves, not restored"; return; }
+  try { a.Enabled = false; _wkErr = "restored " + n + " after an interrupted wake"; }
+  catch { _wkErr = "could not restore " + n + " after an interrupted wake"; }
+}
 void AlertResolve() {
   _bcChat = null;
   _bcComponent = false;
@@ -2442,17 +2558,21 @@ void AlertResolve() {
   }
   _alTransport = AlertTransport(_cfg.AlertsEnabled, _cfg.AlertCfgError, _bcFound, _bcWorking, _bcComponent);
 }
-// OBSERVATIONAL PHASE. Reads pool fill and sends chat. Touches no queue, no inventory and no
-// block setting - not BroadcastTarget, not UseAntenna, not the controller's chat CustomName.
+// OBSERVATIONAL PHASE, with exactly one authorised exception: it may switch the CONFIGURED
+// ALERT ANTENNA on and back off. It touches no queue, no inventory, and no other block setting
+// anywhere - not BroadcastTarget, not UseAntenna, not any CustomName, not antenna Radius or
+// EnableBroadcasting.
 void AlertEvaluation() {
   DateTime nowUtc = DateTime.UtcNow;
   double dt = Math.Max(0, (nowUtc - _alLastEval).TotalSeconds);
   _alLastEval = nowUtc;
   AlertResolve();
+  WakeRecover(); // before every gate below: a stranded antenna is released unconditionally
   if (!_cfg.AlertsEnabled) {
     // A gated phase clears its own diagnostics on the skip path, not just on entry. Dropping
     // the state as well means switching alerting back on is a fresh start rather than a replay
     // of conditions the player was never told about.
+    if (_wkOwn != null) WakeOff(); // switching alerting off does not excuse leaving it on
     _alActive = false;
     _alerts.Clear();
     _alEvents = 0; _alSuppressed = 0; _alBlocked = 0; _alSendErrors = 0; _alLastMsg = "";
@@ -2461,8 +2581,17 @@ void AlertEvaluation() {
   if (_cfg.AlertCfgError != "") return; // fail closed; reported through [IOPM.ConfigError.*]
   int pass = AlertPass(_alActive, _cfg.AlertOnStartup, AlertCanSend(_alTransport));
   _alActive = true;
-  if (pass == 0) { _alBlocked++; return; } // transport down: no send, and no state advanced
+  if (pass == 0) {
+    _alBlocked++;                  // transport down: no send, and no state advanced
+    if (_wkOwn != null) WakeOff(); // nothing can be sent, so nothing needs the antenna awake
+    return;
+  }
   bool silent = pass == 1;
+  // COLLECT, THEN DECIDE. The messages have to exist before the antenna question can be
+  // answered honestly, because "is an alert pending" is the gate on touching the block at all.
+  // Bounded by CATS.Length - nine - so this is a fixed-size buffer, not a queue that can grow.
+  _alPendK.Clear();
+  _alPendM.Clear();
   for (int i = 0; i < CATS.Length; i++) {
     List<CI> pool;
     if (!_pools.TryGetValue(CATS[i], out pool) || pool.Count == 0) continue;
@@ -2474,10 +2603,36 @@ void AlertEvaluation() {
     string key = "WH:" + CATS[i].ToUpperInvariant();
     string msg = AlertStep(key, ovf ? "OVERFLOW" : "WAREHOUSE", CATS[i], pct, _cfg.AlertWarnPct,
       _cfg.AlertCritPct, _cfg.AlertHystPct, _cfg.AlertCooldownSec, dt, silent);
-    // COMMIT ONLY ON A CLEAN SEND. If SendMessage throws, nothing is acknowledged and the
-    // transition is re-derived next cycle instead of being lost.
-    if (msg != "" && AlertSend(msg)) AlertCommit(key, msg);
+    if (msg != "") { _alPendK.Add(key); _alPendM.Add(msg); }
   }
+  WakeResolve();
+  bool owned = _wkOwn != null;
+  // When we own a wake, "usable" also means the block we woke is still the one answering to the
+  // configured name. A rename mid-sequence therefore restores rather than sends.
+  bool usable = _wkFound == 1 && (!owned || _wkAnt == _wkOwn);
+  bool en = owned ? WakeOwnedEnabled() : _wkEnabled;
+  switch (WakeAction(_cfg.WakeAntenna, _bcUseAntenna, usable, en, _alPendM.Count > 0, owned)) {
+    case WA_SEND: AlertFlush(); break;
+    case WA_WAKE: WakeOn(); break;   // nothing is sent in the execution that enables the antenna
+    case WA_REST: WakeOff(); break;
+    case WA_DROP: WakeDrop(); break;
+    case WA_FAIL:
+      _alBlocked++;
+      _wkState = WK_ERR;
+      _wkErr = _cfg.AlertAntenna == "" ? "WakeAntennaForAlerts=true but AlertAntenna is empty"
+        : _wkFound == 0 ? "no antenna named " + _cfg.AlertAntenna
+        : _wkFound + " antennas named " + _cfg.AlertAntenna;
+      break;
+  }
+}
+bool WakeOwnedEnabled() { try { return _wkOwn.Enabled; } catch { return false; } }
+// Send the batch under ONE wake. Several pools crossing a threshold in the same evaluation must
+// not toggle the antenna once each. Each message commits independently, so one throwing send
+// leaves only its own transition pending.
+void AlertFlush() {
+  for (int i = 0; i < _alPendM.Count; i++)
+    if (AlertSend(_alPendM[i])) AlertCommit(_alPendK[i], _alPendM[i]);
+  if (_wkOwn != null) _wkState = WK_READY;
 }
 // FIRE AND FORGET, but not fire and pretend. Returns true only when SendMessage returned
 // without throwing - which means "handed to the controller", never "received by anyone".
@@ -2558,6 +2713,14 @@ void WriteDiagnostics() {
   // antenna state is not, and cannot honestly be made into, a transport verdict.
   ini.Set(alk, "UseAntennaAdvisory", _bcComponent ? (_bcUseAntenna ? "true" : "false") : "unknown");
   ini.Set(alk, "AntennasBroadcastingAdvisory", _antBroadcasting);
+  ini.Set(alk, "WakeAntennaForAlerts", _cfg.WakeAntenna);
+  ini.Set(alk, "AlertAntenna", _cfg.AlertAntenna == "" ? "(none)" : _cfg.AlertAntenna);
+  ini.Set(alk, "AlertAntennaFound", _wkFound);
+  ini.Set(alk, "AlertAntennaEnabled", _wkEnabled);
+  ini.Set(alk, "AlertAntennaBroadcasting", _wkBroadcast); // player-owned; IOPM never writes it
+  ini.Set(alk, "WakeState", WKN[_wkState]);
+  ini.Set(alk, "WakeOwned", _wkOwn != null);
+  ini.Set(alk, "WakeNote", _wkErr == "" ? "none" : _wkErr);
   ini.Set(alk, "Alerts", _alEvents);
   ini.Set(alk, "Suppressed", _alSuppressed);
   ini.Set(alk, "Blocked", _alBlocked);

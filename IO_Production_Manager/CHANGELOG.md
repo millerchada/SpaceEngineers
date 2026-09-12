@@ -28,6 +28,236 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.40 — antenna wake for Broadcast Controller alerts (opt-in)
+
+**Still the candidate. NOT ready for live UAT — see the character budget below,
+which needs a decision before anything is pasted.**
+
+### What it does
+
+If the Broadcast Controller is set to `UseAntenna` and the player's radio antenna
+is normally powered down, IOPM may switch **one specifically named antenna** on,
+let the game settle for an execution, send, and switch it back off.
+
+```ini
+WakeAntennaForAlerts=false     ; default
+AlertAntenna=                  ; default - no name, because IOPM must never guess
+```
+
+Existing installations are unaffected until both are set by hand.
+`Compact Antenna Moon` appears in configuration and UAT examples only; antenna
+discovery is by configured name, never by a name baked into the runtime.
+
+### The six conditions
+
+Alerts enabled; transport otherwise `OK`; controller reports `UseAntenna=true`;
+`WakeAntennaForAlerts=true`; **exactly one** same-construct `IMyRadioAntenna`
+carries the configured name; and **an alert message is actually pending**.
+
+The last one is load-bearing and has its own invariant check: *a cycle merely
+running never moves a block*. With `UseAntenna=false` the antenna is never
+touched at all.
+
+### Asynchronous by design, not by accident
+
+`Enabled = true` → `SendMessage` → `Enabled = false` inside one execution is
+**not** what this does. There is no evidence the game makes an antenna usable
+within the tick that enabled it, and a send that quietly went nowhere is the
+exact failure mode this release keeps designing against. So the antenna is
+enabled in one PB execution and the message goes out in a **later** one — no
+blocking wait, no sleep, no loop, just a state that advances one evaluation at a
+time. The wait is a *deterministic execution boundary*, not a wall-clock delay.
+
+    alert pending, antenna already on  -> send now, never touch the block
+    alert pending, antenna off         -> enable, take ownership, send NOTHING
+    next evaluation, still pending     -> send the whole batch
+    nothing left pending               -> switch it back off, Idle
+
+`WakeState` is `Idle` / `Waking` / `Ready` / `Error`; `WakeOwned` says whether
+IOPM currently owes a restore.
+
+The decision itself is a pure function, `WakeAction(...)`, in its own
+`// <alert-wake>` region — so `tests/tests_alert_engine.py` extracts and drives
+every row of it, exactly as it already does for the state engine and transport.
+
+### Batching
+
+Messages are now **collected first, then sent**. Several pools crossing a
+threshold in the same evaluation share one wake: one enable, one batch, one
+restore — not one toggle per alert. The buffer is two parallel lists bounded by
+the nine warehouse categories; it is a fixed-size scratch area, not a queue that
+can grow. Each message still commits independently, so one throwing send leaves
+only its own transition pending.
+
+All existing semantics are unchanged: only real transitions produce messages, no
+periodic reminders, failed sends stay pending, escalation supersedes a lower
+pending condition, and recovery still only follows a successfully announced
+problem.
+
+### IOPM restores only what IOPM changed
+
+An antenna that was already on is **never** switched off.
+
+| Situation | Behaviour |
+|---|---|
+| player switches the antenna off mid-sequence | **lets go** — their setting wins, no re-assert |
+| antenna renamed or removed mid-sequence | restores the block it woke, if that reference still works |
+| `WakeAntennaForAlerts` / `UseAntenna` switched off mid-wake | restores, then stands down |
+| alerting switched off entirely mid-wake | restores first |
+| transport drops mid-wake | restores — nothing can be sent, so nothing needs the antenna |
+| the restore itself throws | keeps ownership **and** the marker, retries next evaluation |
+
+Wake configured but unusable — empty name, missing antenna, or duplicate names —
+**fails closed**: nothing sent, nothing announced, transition stays pending,
+`Blocked` increments, and `WakeNote` says which of the three it was. No fallback
+to an arbitrary antenna, and no hopeful send into an antenna that is off.
+
+`EnableBroadcasting=false` is treated as a player-owned setting: reported as
+`AlertAntennaBroadcasting`, never written.
+
+### Restart safety — and the one reason `Storage` was touched
+
+Alert state is in memory and dies with the script. A recompile, world reload or
+server restart **between enabling the antenna and switching it off** leaves
+nothing in RAM that remembers IOPM owes a restore — and the player's antenna
+stays on, because of IOPM, indefinitely. That is not an acceptable outcome for an
+opt-in convenience feature.
+
+`Storage` now carries exactly one string: the name of the antenna IOPM currently
+owns, or empty. Not the alert engine, not the state machine, no history. The
+first evaluation after a load reads it, switches that antenna off and clears it —
+**before** the `Enabled=false` gate, so a stranded antenna is released even if
+alerting has since been switched off entirely.
+
+Two details that are the actual safety argument, both invariant-checked:
+
+- **The marker is written BEFORE `Enabled = true`.** An interruption between the
+  two then leaves a stale marker and an antenna that is still off, which recovery
+  simply clears. The opposite order strands the block, which is the whole thing
+  we are preventing.
+- **It is a direct assignment, not a `Save()` hook.** `Save()` remains empty. A
+  crash that never calls `Save()` still leaves the marker behind.
+
+Two honest limitations, recorded rather than papered over:
+
+- If the antenna is renamed or duplicated between the interruption and the
+  restart, recovery cannot identify it. It clears the marker and says so in
+  `WakeNote` rather than switching off a block it cannot confirm.
+- If the player deliberately turned that antenna on during the outage, recovery
+  turns it off once. The window is load → first cycle, and the alternative is a
+  block IOPM strands on forever. Stated in the README.
+
+### Diagnostics
+
+```
+WakeAntennaForAlerts=True      AlertAntennaFound=1        WakeState=Idle
+AlertAntenna=<name>            AlertAntennaEnabled=False  WakeOwned=False
+AlertAntennaBroadcasting=True  WakeNote=none
+```
+
+Enough to prove which antenna was selected, whether it was originally on or off,
+whether IOPM currently owns a temporary wake, and whether restoration succeeded.
+`AlertAntennaFound` is a count for the same reason `ControllersFound` is. No
+alert history log was added.
+
+### The observational invariant was narrowed, not dropped
+
+`AlertEvaluation` is no longer entirely read-only with respect to block settings.
+The old blanket rule ("alert code never switches a block on or off") is replaced
+by a tighter one that is harder to satisfy accidentally:
+
+> The alert subsystem may write **`Enabled`, on the configured alert antenna, and
+> nothing else**. Three authorised writes exist — wake, restore, restart recovery
+> — and `tests/tests_invariants.py` fails the build at four.
+
+Everything else stays forbidden and is still proven by negative control: the
+controller's `Enabled`, `UseAntenna`, `BroadcastTarget`, any `CustomName`,
+`CustomData`, antenna `Radius` and `EnableBroadcasting`.
+
+### Tests
+
+`tests_alert_engine.py`: **112 checks**, up from 87. Twenty-five new, covering
+every required scenario — wake disabled, `UseAntenna=false`, antenna already on,
+antenna off (and that **nothing is sent in the enabling execution**), the later
+send, the restore, never restoring an antenna that was already on, failed sends
+leaving the alert pending, no pending alert meaning no wake, duplicate and
+missing antennas failing closed, and the player switching the antenna off
+mid-sequence. Sequence tests run through a small simulator whose only job is to
+apply the two obvious effects — `WA_WAKE` turns the simulated antenna on,
+`WA_REST` turns it off — so the decision under test remains the shipped
+`WakeAction` rather than a second implementation of it.
+
+`tests_invariants.py`: **36 checks + 13 negative controls**, up from 27 + 9. Four
+new mutants: switching the *controller* off from alert code, reconfiguring the
+antenna it woke, waking with no alert pending, and enabling the antenna before
+recording ownership (the restart-safety ordering). All rejected.
+
+Restart safety is covered by the ordering invariant and by live probe 4.8; the
+interrupted-restart path itself is a game-lifecycle event, so the repo proves the
+*ordering guarantee* and the live UAT proves the *outcome*.
+
+v2.4.39 still reports NOT APPLICABLE for the alert suites and still passes its
+own gate unchanged.
+
+### Results
+
+    RELEASE GATE PASSED   (v2.4.40 and v2.4.39 both)
+
+    tests_alert_engine        112 checks                      PASS
+    tests_canonicalize_stock   52 checks                      PASS
+    tests_invariants           36 checks + 13 controls        PASS
+    tests_yield_math                                          PASS
+
+### Character budget — STOP AND DISCUSS BEFORE UAT
+
+    pre-feature artifact      93,102
+    feature-only increase     +3,699
+    final artifact            96,801
+    remaining headroom         3,199
+
+This is the outcome that was flagged in advance as needing a decision rather than
+a judgement call at the keyboard. **3,199 characters is 3.2% of the PB ceiling**,
+and the candidate now consumes almost all available headroom.
+
+Where the 3,699 went, measured rather than guessed: roughly 1,600 in the wake
+module itself (`WakeAction`, `WakeResolve`, `WakeOn/Off/Drop/Recover`), ~700 in
+restructuring the evaluation to collect-then-decide plus `AlertFlush` and the
+pending buffer, ~800 in the eight new diagnostic keys, and ~400 in configuration
+and the default Custom Data block. None of it is duplicated logic.
+
+**Nothing was sacrificed to chase 92,000**, per instruction. The compressible
+part is the diagnostics — and those are precisely what probe 4 needs in order to
+prove which antenna was selected, whether IOPM owned the wake, and whether the
+restore happened. Trading them away would make the feature's own UAT weaker.
+
+Options for the discussion, not acted on:
+
+1. **Accept 3,199 for UAT.** The hard ceiling is not breached and the gate
+   passes. But any future addition, including the planned
+   production/resource/loadout alerts, has almost nowhere to go.
+2. **Dedicated size-reclamation pass first**, then UAT. The identifier minifier
+   already reclaims 45%; the remaining fat is in runtime code that has never had
+   a targeted pass, and doing it *before* live testing means UAT validates what
+   will actually ship.
+3. **Ship antenna wake separately** from the first alert release, keeping
+   v2.4.40 at 93,102 for UAT.
+
+My recommendation is **2** — the next workstream is blocked either way, and
+reclaiming before UAT avoids testing a build that then changes underneath the
+evidence.
+
+### Still requires live Chad UAT
+
+`uat/v2.4.40/plan.md` gains **probe 4**, eight tests against the real
+configuration: antenna already on (never switched off), antenna initially off
+(enable → *nothing sent that update* → later send → restore → exactly one alert →
+Idle), batching, failed transport mid-sequence, the player overriding IOPM,
+fail-closed configuration, `EnableBroadcasting` left alone, and **4.8 — recompile
+mid-wake and prove `Compact Antenna Moon` cannot be stranded on**.
+
+Probe 1.1 — whitelist acceptance of `Components.TryGet` — remains the gate the
+repo cannot close.
+
 ## 2.4.40 CORRECTION — four alert-state defects found in review of `a0d861b`
 
 **Still the candidate. Still NOT accepted. Live UAT has not run.**

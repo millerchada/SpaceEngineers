@@ -41,7 +41,7 @@ python ../../tools/build_pb.py IO_Production_Manager_v2.4.40.cs
 # -> IO_Production_Manager_v2.4.40.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.40: source 167,311 -> artifact **93,102** chars (**6,898** headroom).
+v2.4.40: source 176,230 -> artifact **96,801** chars (**3,199** headroom).
 v2.4.39: source 151,049 -> artifact 86,828 chars (13,172 headroom).
 
 Comments and indentation cost ~20,000 characters and mean nothing at runtime,
@@ -399,6 +399,8 @@ WarehouseCriticalPercent=95
 CooldownSeconds=300
 CapacityHysteresisPercent=2
 AlertOnStartup=false
+WakeAntennaForAlerts=false
+AlertAntenna=
 ```
 
 Nothing in that list duplicates a Broadcast Controller setting. **Target
@@ -565,6 +567,136 @@ not depend on it.
 `UseAntenna=false` is a valid native setting and was never an IOPM error. IOPM
 will not switch controllers, enable an antenna, or widen `BroadcastTarget` to
 `Everyone` to get a message out.
+
+### Antenna wake (opt-in, off by default)
+
+A radio antenna left powered down costs nothing and gives nothing away. If yours
+normally sits off, IOPM can switch **one specifically named antenna** on for the
+length of an alert and put it straight back.
+
+```ini
+WakeAntennaForAlerts=true
+AlertAntenna=Compact Antenna Moon
+```
+
+Defaults are `false` and empty, so an existing installation is unaffected until
+both are set by hand. There is **no default antenna name** — IOPM must never
+guess which of your blocks to power up.
+
+**The only block setting the alert subsystem may ever write is `Enabled`, on the
+antenna you named.** Not `Radius`, not `EnableBroadcasting`, not any name, not
+anything at all on the Broadcast Controller. `tests/tests_invariants.py` counts
+the authorised writes and fails the build at four.
+
+If `EnableBroadcasting=false` on that antenna, IOPM reports it
+(`AlertAntennaBroadcasting=False`) and leaves it alone. Waking a powered-down
+antenna is the feature; overriding every way an antenna can be configured is not.
+
+#### When it applies — all six, or not at all
+
+1. `[Alerts] Enabled=true`
+2. Broadcast Controller transport is otherwise `OK`
+3. the controller reports `UseAntenna=true`
+4. `WakeAntennaForAlerts=true`
+5. **exactly one** same-construct `IMyRadioAntenna` carries the configured name
+6. **an alert message is actually pending**
+
+Six is the one that matters. *A cycle merely running never moves a block.* No
+pending alert, no antenna change — and with `UseAntenna=false` the antenna is
+never touched at all, because the controller is not using it.
+
+#### It is an asynchronous state machine, and that is deliberate
+
+`Enabled = true` → `SendMessage` → `Enabled = false` inside a single execution is
+**not** what this does. There is no evidence the game makes an antenna usable
+synchronously within the tick that enabled it, and a send that quietly went
+nowhere is exactly the failure this project keeps designing against.
+
+So the antenna is enabled in one PB execution and the message is sent in a
+**later** one. No blocking wait, no sleeping, no loop — just a state that
+advances one evaluation at a time:
+
+| State | Meaning |
+|---|---|
+| `Idle` | nothing outstanding |
+| `Waking` | IOPM enabled the antenna; the send happens on a later execution |
+| `Ready` | the antenna is up and at least one message has gone out |
+| `Error` | the wake is configured but unusable — see `WakeNote` |
+
+```
+alert pending, antenna already on   -> send now, never touch the block
+alert pending, antenna off          -> enable, mark ownership, send NOTHING
+next evaluation, still pending      -> send the whole batch
+nothing left pending                -> switch it back off, Idle
+```
+
+**Several alerts in one evaluation share one wake.** The messages are collected
+first and sent as a batch, so three pools crossing a threshold together produce
+one enable and one restore, not three. The buffer is bounded by the nine
+warehouse categories — a fixed-size array, never a growing queue.
+
+#### IOPM restores only what IOPM changed
+
+An antenna that was **already on** is never switched off. Ownership is explicit:
+`WakeOwned=True` means IOPM enabled it and still owes you a restore.
+
+| What happens | What IOPM does |
+|---|---|
+| you switch the antenna off mid-sequence | **lets go** — your setting wins, no re-assert |
+| the antenna is renamed or removed mid-sequence | restores the block it woke, if that reference still works |
+| `WakeAntennaForAlerts` or `UseAntenna` switched off mid-wake | restores, then stands down |
+| alerting switched off entirely mid-wake | restores first |
+| transport goes down mid-wake | restores — nothing can be sent, so nothing needs the antenna |
+| the restore itself throws | keeps ownership *and* the marker, and retries next evaluation |
+
+If the wake is configured but unusable — name empty, antenna missing, or two
+blocks sharing the name — IOPM **fails closed**: nothing is sent, nothing is
+marked announced, the transition stays pending, `Blocked` increments and
+`WakeState=Error` says which of the three it was. It does not fall back to some
+other antenna, and it does not send hopefully into an antenna that is off.
+
+#### Restart safety — the one thing that justified touching `Storage`
+
+Alert state is in memory and dies with the script. If the PB is recompiled, the
+world reloads, or the server restarts **between enabling the antenna and
+switching it back off**, nothing in RAM remembers IOPM owes a restore — and your
+antenna is left on, by IOPM, forever.
+
+So `Storage` carries one string: the name of the antenna IOPM currently owns,
+and nothing else. Not the alert engine, not the state machine, not history. The
+first evaluation after a load reads it, switches that antenna off, and clears it
+— **before** the `Enabled=false` gate, so a stranded antenna is released even if
+alerting has since been turned off.
+
+The marker is written **before** `Enabled = true`, never after. An interruption
+between the two then leaves a stale marker and an antenna that is still off,
+which recovery simply clears. The other order strands the block. `Save()` remains
+empty; this is a direct assignment, not a save hook, so it survives a crash that
+never calls `Save()`.
+
+One honest limitation: if the antenna is renamed or duplicated between the
+interruption and the restart, recovery cannot identify it, so it clears the
+marker and says so in `WakeNote` rather than switching off a block it cannot
+confirm. And if *you* deliberately turned that antenna on during the outage,
+recovery will turn it off once — the window is the time between load and the
+first cycle, and the alternative is a block IOPM strands on indefinitely.
+
+#### Wake diagnostics
+
+```
+WakeAntennaForAlerts=True
+AlertAntenna=Compact Antenna Moon
+AlertAntennaFound=1
+AlertAntennaEnabled=False
+AlertAntennaBroadcasting=True
+WakeState=Idle
+WakeOwned=False
+WakeNote=none
+```
+
+`AlertAntennaFound` is a count for the same reason `ControllersFound` is: two
+blocks sharing the name has to be distinguishable from one, and it fails closed
+either way.
 
 ### A transition is consumed only by a successful send
 

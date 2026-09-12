@@ -142,9 +142,17 @@ namespace Sandbox.ModAPI.Ingame {
 
   public interface IMyBroadcastControllerBlock : IMyTerminalBlock { }
 
+  // Verified: Sandbox.ModAPI.Ingame.IMyFunctionalBlock declares Enabled { get; set; } and
+  // RequestEnable(bool). This stub file has historically carried Enabled on IMyTerminalBlock
+  // instead, which compiles the same for every existing use; the real hierarchy is recorded
+  // here because IOPM's antenna wake depends specifically on Enabled being SETTABLE on a
+  // radio antenna, and IMyRadioAntenna really does derive from IMyFunctionalBlock.
+  public interface IMyFunctionalBlock : IMyTerminalBlock { void RequestEnable(bool enable); }
+
   // Verified: Sandbox.ModAPI.Ingame.IMyRadioAntenna exposes Radius, ShowShipName,
-  // IsBroadcasting (get only), EnableBroadcasting, HudText - plus the inherited working state.
-  public interface IMyRadioAntenna : IMyTerminalBlock {
+  // IsBroadcasting (get only), EnableBroadcasting, HudText - plus the inherited working state,
+  // and Enabled via IMyFunctionalBlock.
+  public interface IMyRadioAntenna : IMyFunctionalBlock {
     float Radius { get; set; }
     bool ShowShipName { get; set; }
     bool IsBroadcasting { get; }

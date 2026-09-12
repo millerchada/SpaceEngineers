@@ -81,6 +81,78 @@ DRIVER = '''
   string SN(string key, double pct, double dt) { return Step(key, pct, dt, false); }
   string SB(string key, double pct, double dt) { return Step(key, pct, dt, true); }
 
+  // ---- antenna-wake sequence simulator -----------------------------------
+  // The DECISION under test is the shipped WakeAction. This only applies the two obvious
+  // effects a real execution would have - WA_WAKE turns the simulated antenna on, WA_REST
+  // turns it off - and records the verbs. Keeping the effects trivial is what stops this from
+  // becoming a second implementation of the thing it is supposed to be testing.
+  bool simOn, simOwned;
+  int simSends;
+  static readonly string[] WAN = new string[] { "none", "send", "wake", "rest", "fail", "drop" };
+  string SimTick(bool wakeCfg, bool useAnt, bool usable, bool pending, bool sendOk) {
+    int a = WakeAction(wakeCfg, useAnt, usable, simOn, pending, simOwned);
+    if (a == WA_WAKE) { simOn = true; simOwned = true; }
+    else if (a == WA_REST) { simOn = false; simOwned = false; }
+    else if (a == WA_DROP) { simOwned = false; }
+    else if (a == WA_SEND && sendOk) simSends++;
+    return WAN[a];
+  }
+  void SimReset(bool on) { simOn = on; simOwned = false; simSends = 0; }
+  // One alert pending until it is sent, then nothing.
+  string WakeRun(bool startOn, int ticks) {
+    SimReset(startOn);
+    string outp = "";
+    for (int i = 0; i < ticks; i++) {
+      bool pending = simSends == 0;
+      outp += (outp == "" ? "" : "|") + SimTick(true, true, true, pending, true);
+    }
+    return outp;
+  }
+  // Nothing ever pending: the antenna must never move.
+  string WakeIdle(bool startOn, int ticks) {
+    SimReset(startOn);
+    string outp = "";
+    for (int i = 0; i < ticks; i++) outp += (outp == "" ? "" : "|") + SimTick(true, true, true, false, true);
+    return outp;
+  }
+  // Every send throws, so the alert stays pending: it must keep being offered, and the antenna
+  // must stay awake rather than flapping.
+  string WakeFail(int ticks) {
+    SimReset(false);
+    string outp = "";
+    for (int i = 0; i < ticks; i++) outp += (outp == "" ? "" : "|") + SimTick(true, true, true, true, false);
+    return outp;
+  }
+  // ... and when the condition finally clears, the antenna is put back.
+  string WakeFailThenClear() {
+    SimReset(false);
+    string outp = SimTick(true, true, true, true, false);
+    outp += "|" + SimTick(true, true, true, true, false);
+    outp += "|" + SimTick(true, true, true, false, false);
+    return outp + "|" + (simOn ? "ON" : "OFF");
+  }
+  // The player switches the antenna off while IOPM holds it.
+  string WakePlayerOff() {
+    SimReset(false);
+    string outp = SimTick(true, true, true, true, true);   // wake
+    simOn = false;                                          // the player flips it off
+    outp += "|" + SimTick(true, true, true, true, true);    // drop, do not re-assert
+    outp += "|" + SimTick(true, true, true, true, true);    // free to wake again next time
+    return outp;
+  }
+  // Several pools alerting in the same evaluation: ONE wake, one batch, one restore.
+  string WakeBatch(int n) {
+    SimReset(false);
+    string outp = SimTick(true, true, true, true, true);
+    int a = WakeAction(true, true, true, simOn, true, simOwned);
+    if (a == WA_WAKE) { simOn = true; simOwned = true; }
+    int sent = 0;
+    if (a == WA_SEND) for (int i = 0; i < n; i++) sent++;
+    outp += "|" + WAN[a] + sent;
+    outp += "|" + SimTick(true, true, true, false, true);
+    return outp;
+  }
+
   public int Run() {
     Console.WriteLine("-- threshold transitions");
     Eq("84 on a fresh key is silent", SC("A", 84, 5), "");
@@ -215,6 +287,45 @@ DRIVER = '''
     // so reintroducing the string cannot quietly make it sendable.
     Eq("antenna state is NOT a transport verdict", AlertCanSend("DegradedNoAntenna") ? "y" : "n", "n");
 
+    Console.WriteLine("-- antenna wake: no pending alert, no block ever moves");
+    EqI("wake off, nothing pending", WakeAction(false, true, true, false, false, false), WA_NONE);
+    EqI("wake ON, nothing pending, antenna off", WakeAction(true, true, true, false, false, false), WA_NONE);
+    EqI("wake ON, nothing pending, antenna on", WakeAction(true, true, true, true, false, false), WA_NONE);
+
+    Console.WriteLine("-- antenna wake: when it does not apply, the antenna is untouched");
+    EqI("feature off, alert pending -> send as-is", WakeAction(false, true, true, false, true, false), WA_SEND);
+    EqI("UseAntenna=false, alert pending -> send as-is", WakeAction(true, false, true, false, true, false), WA_SEND);
+    EqI("both off -> send as-is", WakeAction(false, false, false, false, true, false), WA_SEND);
+
+    Console.WriteLine("-- antenna wake: the happy sequence");
+    EqI("pending + antenna already ON -> send, no toggle", WakeAction(true, true, true, true, true, false), WA_SEND);
+    EqI("pending + antenna OFF -> wake, send nothing yet", WakeAction(true, true, true, false, true, false), WA_WAKE);
+    EqI("next execution, owned + still pending -> send", WakeAction(true, true, true, true, true, true), WA_SEND);
+    EqI("after the send, owned + nothing pending -> restore", WakeAction(true, true, true, true, false, true), WA_REST);
+
+    Console.WriteLine("-- antenna wake: fail closed");
+    EqI("configured antenna missing -> FAIL, alert stays pending", WakeAction(true, true, false, false, true, false), WA_FAIL);
+    EqI("duplicate names -> FAIL (same unusable verdict)", WakeAction(true, true, false, true, true, false), WA_FAIL);
+    EqI("  ... and FAIL is not SEND", WakeAction(true, true, false, false, true, false) == WA_SEND ? 1 : 0, 0);
+
+    Console.WriteLine("-- antenna wake: we only ever undo our own change");
+    EqI("owned, feature switched off mid-wake -> restore", WakeAction(false, true, true, true, true, true), WA_REST);
+    EqI("owned, UseAntenna switched off mid-wake -> restore", WakeAction(true, false, true, true, true, true), WA_REST);
+    EqI("owned, antenna vanished/renamed -> restore", WakeAction(true, true, false, true, true, true), WA_REST);
+    EqI("owned, player switched it off -> let go, do not re-assert", WakeAction(true, true, true, false, true, true), WA_DROP);
+    EqI("NOT owned, antenna on, nothing pending -> never restore", WakeAction(true, true, true, true, false, false), WA_NONE);
+
+    Console.WriteLine("-- antenna wake: full sequences, driven through the shipped decision");
+    Eq("OFF -> wake, send, restore, idle", WakeRun(false, 5), "wake|send|rest|none|none");
+    Eq("already ON -> send immediately, never restored", WakeRun(true, 5), "send|none|none|none|none");
+    Eq("no alert at all -> the antenna is never touched", WakeIdle(false, 4), "none|none|none|none");
+    Eq("send keeps failing -> re-sent, stays awake, never stranded", WakeFail(4), "wake|send|send|send");
+    Eq("  ... and the antenna is left OFF once the alert clears", WakeFailThenClear(), "wake|send|rest|OFF");
+    Eq("player kills the antenna mid-sequence", WakePlayerOff(), "wake|drop|wake");
+
+    Console.WriteLine("-- antenna wake: batching");
+    Eq("three alerts in one evaluation wake the antenna once", WakeBatch(3), "wake|send3|rest");
+
     Console.WriteLine();
     Console.WriteLine(fails == 0 ? ("ALL " + checks + " CHECKS PASSED") : (fails + " of " + checks + " CHECKS FAILED"));
     return fails == 0 ? 0 : 1;
@@ -248,7 +359,7 @@ def main():
         return 0
 
     regions = []
-    for name in ('alert-engine', 'alert-transport'):
+    for name in ('alert-engine', 'alert-transport', 'alert-wake'):
         body = extract(src, name)
         # A missing or empty region means the suite is testing NOTHING. Say so and fail.
         if body is None or not body.strip():
@@ -267,7 +378,7 @@ def main():
     cs = os.path.join(tmp, 'alerts.cs')
     exe = os.path.join(tmp, 'alerts.exe')
     io.open(cs, 'w', encoding='utf-8', newline='').write(
-        HARNESS_HEAD + regions[0] + regions[1] + DRIVER)
+        HARNESS_HEAD + regions[0] + regions[1] + regions[2] + DRIVER)
     p = subprocess.run([CSC, '-nologo', '-out:' + exe, cs],
                        capture_output=True, text=True)
     if p.returncode != 0:

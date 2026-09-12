@@ -8,8 +8,8 @@ from a unit test, because they are statements about what the file does NOT conta
 
   - AddQueueItem() is the only production-queue mutation that exists
   - remote/docked inventory never reaches base _onHand
-  - the AlertEvaluation phase is observational - it must not mutate a queue, an inventory, or
-    a native Broadcast Controller setting the player owns
+  - the alert subsystem may write exactly ONE block setting - Enabled, on the configured alert
+    antenna - and must not mutate a queue, an inventory, or any other native block setting
 
 A comment asserting an invariant is not a check. This is the check. It is deliberately crude -
 it reads the source as text - because the alternative, trusting review, is what let a second
@@ -100,7 +100,6 @@ def run(src, report):
     for banned, why in (
             (r'AddQueueItem', 'mutates a production queue'),
             (r'TransferItemTo', 'moves inventory'),
-            (r'\.Enabled\s*=[^=]', 'switches a block on or off'),
             (r'\.UseAntenna\s*=[^=]', 'overwrites a native Broadcast Controller setting'),
             (r'\.BroadcastTarget\s*=[^=]', 'overwrites Owner/Faction/Everyone targeting'),
             (r'\.CustomName\s*=[^=]', 'renames a block'),
@@ -112,6 +111,28 @@ def run(src, report):
     check('the alert phase calls PoolStats rather than recomputing fill',
           bool(m) and 'PoolStats(pool, out healthy, out pct)' in m.group(0))
 
+    # THE OBSERVATIONAL RULE, NARROWED RATHER THAN DROPPED (2.4.40 antenna wake). The alert
+    # subsystem is now allowed to write exactly one setting on exactly one block. Enumerating
+    # the three authorised writes - and requiring the count to be exactly three - keeps a
+    # fourth from appearing quietly, which a bare "no .Enabled =" rule could no longer do.
+    report('-- Enabled may be written on the configured alert antenna, and nowhere else')
+    ens = hits(r'\.Enabled\s*=[^=]', region)
+    allowed = ('_wkAnt.Enabled = true;',      # wake
+               'if (_wkOwn != null) _wkOwn.Enabled = false;',  # restore what we woke
+               'try { a.Enabled = false; _wkErr = ')           # restart recovery
+    check('every Enabled write is one of the three authorised ones',
+          all(any(t.startswith(a) or a in t for a in allowed) for t in ens), str(ens))
+    check('there are exactly three of them', len(ens) == 3, str(ens))
+    check('IOPM only ever switches the antenna OFF via the block it woke',
+          bool(m) and '_wkOwn = _wkAnt;' in m.group(0))
+    check('a restore failure keeps ownership so it is retried',
+          bool(m) and '_wkState = WK_ERR; _wkErr = "restore failed"; return;' in m.group(0))
+    check('the wake marker is written BEFORE the antenna is enabled',
+          bool(m) and m.group(0).index('Storage = _cfg.AlertAntenna;')
+                      < m.group(0).index('_wkAnt.Enabled = true;'))
+    check('an alert must be pending before any wake decision can move a block',
+          bool(m) and 'if (!pending) return WA_NONE;' in m.group(0))
+
     # The rules below are the ones the v2.4.40 review found broken. Each names an EXACT line,
     # because each defect was wrong by a single token and a looser pattern would have matched
     # the broken version just as happily.
@@ -120,7 +141,8 @@ def run(src, report):
     check('a startup baseline never marks a level announced',
           'if (silent) { st.Ack = lvl; st.Ann = false; return ""; }' in body)
     check('an alert is committed ONLY when AlertSend returned true',
-          'if (msg != "" && AlertSend(msg)) AlertCommit(key, msg);' in body)
+          'if (AlertSend(_alPendM[i])) AlertCommit(_alPendK[i], _alPendM[i]);' in body)
+    check('AlertCommit has exactly one call site', len(hits(r'AlertCommit\(_al', region)) == 1)
     check('AlertSend reports success rather than returning void',
           'bool AlertSend(string msg) {' in body)
     check('antenna state is not an input to the transport verdict',
@@ -128,9 +150,13 @@ def run(src, report):
           'bool working, bool component) {' in body)
     check('no transport state claims a send it cannot make',
           'DegradedNoAntenna' not in body)
+    check('Storage carries the wake marker and nothing else',
+          len(hits(r'Storage\s*=', lines)) == len(hits(r'Storage\s*=', region))
+          and len(hits(r'Storage\s*=', region)) == 5)
+    check('Save() still persists nothing', 'public void Save() { }' in src)
 
     report('-- the extraction markers tests_alert_engine.py depends on')
-    for name in ('alert-engine', 'alert-transport'):
+    for name in ('alert-engine', 'alert-transport', 'alert-wake'):
         check('marker pair <%s> present' % name,
               ('// <%s>' % name) in src and ('// </%s>' % name) in src)
     return fails, n[0]
@@ -164,12 +190,24 @@ MUTANTS = [
      lambda s: s.replace('if (silent) { st.Ack = lvl; st.Ann = false; return ""; }',
                          'if (silent) { st.Ack = lvl; st.Ann = true; return ""; }', 1)),
     ('committing an alert without a successful send',
-     lambda s: s.replace('if (msg != "" && AlertSend(msg)) AlertCommit(key, msg);',
-                         'if (msg != "") { AlertSend(msg); AlertCommit(key, msg); }', 1)),
+     lambda s: s.replace('if (AlertSend(_alPendM[i])) AlertCommit(_alPendK[i], _alPendM[i]);',
+                         'AlertSend(_alPendM[i]); AlertCommit(_alPendK[i], _alPendM[i]);', 1)),
     ('antenna state smuggled back into the transport verdict',
      lambda s: s.replace('static bool AlertCanSend(string transport) { return transport == "OK"; }',
                          'static bool AlertCanSend(string transport) { return transport == "OK" '
                          '|| transport == "DegradedNoAntenna"; }', 1)),
+    ('the alert phase switching the CONTROLLER off',
+     lambda s: s.replace('void WakeDrop() {',
+                         'void WakeDrop() {' + chr(10) + '  _bcBlock.Enabled = false;', 1)),
+    ('the alert phase reconfiguring the antenna it woke',
+     lambda s: s.replace('    _wkAnt.Enabled = true;',
+                         '    _wkAnt.Enabled = true;' + chr(10) + '    _wkAnt.EnableBroadcasting = true;', 1)),
+    ('waking the antenna with no alert pending',
+     lambda s: s.replace('  if (!pending) return WA_NONE;',
+                         '  if (!pending) return antEnabled ? WA_NONE : WA_WAKE;', 1)),
+    ('enabling the antenna before recording that IOPM owns it',
+     lambda s: s.replace('    Storage = _cfg.AlertAntenna;' + chr(10) + '    _wkAnt.Enabled = true;',
+                         '    _wkAnt.Enabled = true;' + chr(10) + '    Storage = _cfg.AlertAntenna;', 1)),
     ('a deleted extraction marker',
      lambda s: s.replace('// </alert-engine>', '', 1)),
 ]
