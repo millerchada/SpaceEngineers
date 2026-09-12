@@ -28,6 +28,80 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## Machine-coverage audit — Advanced Assembler enumerated (no runtime change)
+
+A third completeness dimension, and one the existing audits structurally cannot
+reach. `audit_catalog.py` asks whether what IOPM knows is internally consistent;
+`audit_closure.py` asks whether the graphs it knows terminate properly. Both
+start from what IOPM already has, so A PRODUCT ABSENT FROM IOPM ENTIRELY PASSES
+BOTH SILENTLY - it is not a stock root, so catalog integrity never looks at it,
+and no known recipe references it, so it never appears as a closure leaf.
+
+`tests/audit_machine_coverage.py` starts from OUTSIDE: live per-machine evidence
+in `machine_evidence/*.json`, compared inward against ItemDefs, aliases,
+blueprint knowledge, active Recipes, StockConfigurable, loadout aliases and
+manual-queue attributability.
+
+### Advanced Assembler, ENUMERATION COMPLETE, 17 observed recipes
+
+    MANAGED                5    all five Components, ingredients matching exactly
+    KNOWN_IDENTITY_ONLY    3    MR-20, MR-8P, MR-50A rifle magazines
+    MISSING_FROM_IOPM      9    eight Proficient Tools + S-20A Pistol Magazine
+    INTENTIONAL_EXCLUDE    0    nothing has been excluded; the list is empty on purpose
+    UNKNOWN                0
+    ingredient mismatches: none
+
+The five Components - LaserEmitter, LithiumPowerCell, Reactor, SuperMagnet,
+TokamakBlanket - match the live UI ingredient-for-ingredient and quantity-for-
+quantity. That is the first independent confirmation that any part of the recipe
+catalog is correct rather than merely self-consistent.
+
+### Two unresolved identities, recorded not guessed
+
+    MR-8P Rifle Magazine   CONFLICT - historical subtype PreciseAutomaticRifleGun_Mag_5rd
+                           says 5rd; the live UI shows capacity 8
+    S-20A Pistol Magazine  UNRESOLVED - the alias table holds only S-10, S-10E and S-10A
+                           pistol magazines. No S-20A entry exists anywhere in the repo
+
+Neither was invented. The S-20A pistol and its magazine are a matched pair the
+repo has never seen, and the MR-8P suffix may be a stale mod-era artefact or may
+be the real subtype with a changed capacity - the repo cannot tell which.
+
+### Manual-queue attributability is narrower than it looks
+
+The three known magazines are LOADOUT ALIASES, not ItemDefs.
+`BlueprintReverseMap` iterates `_items`, so a loadout alias can never attribute
+a manually queued job. Anyone hand-queuing rifle magazines on the Advanced
+Assembler today gets no credit in `_queuedOutput`. Reported per row rather than
+assumed from the alias existing.
+
+### Nothing was added to [Stock], and nothing was excluded
+
+These are five separate decisions and the audit deliberately keeps them apart:
+
+    machine/catalog coverage      what the mod exposes            <- this audit
+    stock-policy scope            what gets a [Stock] row
+    active automated production   what IOPM queues
+    manual-queue recognition      what IOPM credits when you queue it
+    dock/loadout support          what a loadout line can name
+
+`INTENTIONAL_EXCLUDE` is populated only from an explicit list with a recorded
+reason. Being a tool, weapon, bottle or ammo item is NOT a reason, and the list
+is currently empty.
+
+### Gunpowder is now materially worse
+
+It was one dependency of Explosives. The ammo pass makes it a dependency of five
+things: Explosives, MR-20, S-20A, MR-8P and MR-50A magazines. Physical identity
+`MyObjectBuilder_Ingot/Magnesium`, producer Munitions Factory (Large),
+ingredient list still not captured. Still not inferred.
+
+### Scope discipline
+
+`GLOBAL IO MACHINE COVERAGE IS NOT ESTABLISHED.` The audit prints that on every
+run. One machine of many is enumerated; every other production block is
+UNAUDITED, which is not the same as clean.
+
 ## Closure-audit semantics (docs/tooling only — artifact byte-identical, no version bump)
 
 `TERMINAL_RAW` is renamed **`TERMINAL_PROCESS_BOUNDARY`**, defined as:

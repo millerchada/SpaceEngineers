@@ -1,0 +1,116 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block.",
+    "This is primary evidence, captured by hand from the in-game blueprint list. It is the",
+    "record of WHAT THE MOD EXPOSES, kept separately from what IOPM chooses to model, so the",
+    "two can be compared instead of conflated. audit_machine_coverage.py reads these files.",
+    "",
+    "enumeration: COMPLETE   every visible blueprint category on the block was inspected",
+    "             PARTIAL    some categories inspected; observed_recipes is a lower bound",
+    "             (absent)   machine not yet audited at all - never assume COMPLETE",
+    "",
+    "Quantities are transcribed exactly as shown. Output yield is NOT recorded unless the UI",
+    "stated one: a single result icon is not evidence of yield (see Lightbulb|10, a measured",
+    "non-unity yield that no icon would have revealed).",
+    "Physical subtype ids are NOT inferred from display names. Where identity is unresolved,",
+    "identity_hint is null and the reconciliation is left to the audit."
+  ],
+  "machine": "Advanced Assembler",
+  "machine_token_in_iopm": "Advanced Assembler",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 17,
+  "observed_categories": { "Components": 5, "Proficient Tools": 8, "Advanced Ammo": 4 },
+  "provenance": "operator, manual inspection of every visible blueprint category, 2026-09-12",
+
+  "recipes": [
+    { "category": "Components", "display": "Laser Emitter", "alias_hint": "LaserEmitter",
+      "identity_hint": "MyObjectBuilder_Component/LaserEmitter",
+      "ingredients": { "Glass": 1, "Lightbulb": 3, "SiliconWafer": 2, "SilverIngot": 2,
+                       "LithiumPaste": 1, "AluminumIngot": 3 } },
+
+    { "category": "Components", "display": "Lithium Power Cell", "alias_hint": "LithiumPowerCell",
+      "identity_hint": "MyObjectBuilder_Component/PowerCell",
+      "ingredients": { "AluminumPlate": 1, "CopperWire": 4, "LithiumPaste": 10, "Rubber": 2,
+                       "Carbon": 3 } },
+
+    { "category": "Components", "display": "Reactor Comp.", "alias_hint": "Reactor",
+      "identity_hint": "MyObjectBuilder_Component/Reactor",
+      "ingredients": { "TitaniumPlate": 1, "Concrete": 3, "Carbon": 3, "SilverIngot": 5,
+                       "Plastic": 10 } },
+
+    { "category": "Components", "display": "Superconducting Electromagnet",
+      "alias_hint": "SuperMagnet", "identity_hint": "MyObjectBuilder_Component/SuperMagnet",
+      "notes": "result info identifies the product as 'Superconducting Magnet'",
+      "ingredients": { "TantalumIngot": 1, "TitaniumIngot": 2, "GoldWire": 2, "Cryocooler": 1 } },
+
+    { "category": "Components", "display": "Tokamak Blanket Plate", "alias_hint": "TokamakBlanket",
+      "identity_hint": "MyObjectBuilder_Component/TokamakBlanket",
+      "ingredients": { "Ceramic": 2, "LithiumPaste": 2, "ArmoredPlate": 1, "CopperIngot": 2,
+                       "Thermocouple": 1 } },
+
+    { "category": "Proficient Tools", "display": "Proficient Grinder",
+      "alias_hint": "ProficientGrinder", "identity_hint": null,
+      "ingredients": { "Ceramic": 1, "GoldWire": 1, "Motor": 1, "TitaniumPlate": 1 } },
+
+    { "category": "Proficient Tools", "display": "Proficient Hand Drill",
+      "alias_hint": "ProficientHandDrill", "identity_hint": null,
+      "ingredients": { "Ceramic": 1, "LargeSteelTube": 1, "GoldWire": 2, "Motor": 1,
+                       "TitaniumPlate": 1 } },
+
+    { "category": "Proficient Tools", "display": "Proficient Welder",
+      "alias_hint": "ProficientWelder", "identity_hint": null,
+      "notes": "UI ingredient 'Capacitor Cell' reconciles to the canonical Capacitor alias",
+      "ingredients": { "GoldWire": 2, "Capacitor": 2, "SmallSteelTube": 1, "Plastic": 1,
+                       "AluminumPlate": 1 } },
+
+    { "category": "Proficient Tools", "display": "RO-1 Rocket Launcher",
+      "alias_hint": "RO1RocketLauncher", "identity_hint": null,
+      "notes": "uses magazine: Rocket",
+      "ingredients": { "TitaniumIngot": 6, "LargeSteelTube": 4, "Plastic": 4, "GoldWire": 3 } },
+
+    { "category": "Proficient Tools", "display": "S-20A Pistol", "alias_hint": "S20APistol",
+      "identity_hint": null, "notes": "uses magazine: S-20A Pistol Magazine",
+      "ingredients": { "AluminumIngot": 2, "Plastic": 1, "SmallSteelTube": 1 } },
+
+    { "category": "Proficient Tools", "display": "MR-50A Rifle", "alias_hint": "MR50ARifle",
+      "identity_hint": null,
+      "notes": "uses magazines: MR-50A Rifle Magazine; 5.56x45mm NATO magazine (shown NOT craftable)",
+      "ingredients": { "TitaniumIngot": 1, "Plastic": 2, "SmallSteelTube": 2, "CobaltIngot": 1 } },
+
+    { "category": "Proficient Tools", "display": "Hydrogen Bottle", "alias_hint": "HydrogenBottle",
+      "identity_hint": null,
+      "ingredients": { "LargeSteelTube": 5, "NickelIngot": 15 } },
+
+    { "category": "Proficient Tools", "display": "Oxygen Bottle", "alias_hint": "OxygenBottle",
+      "identity_hint": null,
+      "ingredients": { "LargeSteelTube": 5, "NickelIngot": 15 } },
+
+    { "category": "Advanced Ammo", "display": "MR-20 Rifle Magazine",
+      "alias_hint": "MR20RifleMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/AutomaticRifleGun_Mag_20rd",
+      "identity_confidence": "historical alias table, not re-confirmed live",
+      "magazine_capacity": 20,
+      "ingredients": { "IronIngot": 0.8, "CopperIngot": 0.2, "Gunpowder": 0.15 } },
+
+    { "category": "Advanced Ammo", "display": "MR-8P Rifle Magazine",
+      "alias_hint": "MR8PRifleMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/PreciseAutomaticRifleGun_Mag_5rd",
+      "identity_confidence": "CONFLICT - historical subtype says 5rd, live UI shows capacity 8",
+      "magazine_capacity": 8,
+      "ingredients": { "IronIngot": 0.8, "CopperIngot": 0.2, "Gunpowder": 0.15 } },
+
+    { "category": "Advanced Ammo", "display": "MR-50A Rifle Magazine",
+      "alias_hint": "MR50ARifleMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/RapidFireAutomaticRifleGun_Mag_50rd",
+      "identity_confidence": "historical alias table, not re-confirmed live",
+      "magazine_capacity": 50,
+      "ingredients": { "IronIngot": 2, "CopperIngot": 0.5, "Gunpowder": 0.4 } },
+
+    { "category": "Advanced Ammo", "display": "S-20A Pistol Magazine",
+      "alias_hint": "S20APistolMagazine", "identity_hint": null,
+      "identity_confidence": "UNRESOLVED - the alias table holds only S-10, S-10E and S-10A pistol magazines; no S-20A entry exists anywhere in the repo",
+      "magazine_capacity": 20,
+      "ingredients": { "IronIngot": 0.5, "CopperIngot": 0.1, "Gunpowder": 0.1 } }
+  ]
+}
