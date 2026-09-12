@@ -1985,9 +1985,13 @@ void BuildKnowledgeBase() {
   // EVERY STOCK ROOT HAS A RECIPE, BUT THE GRAPH IS NOT CLOSED. One manufactured DEPENDENCY
   // still has no recipe: Gunpowder (MyObjectBuilder_Ingot/Magnesium), crafted in a Munitions
   // Factory (Large) per live observation, referenced by Explosives. Its ingredient list has
-  // never been captured, so Explosives is queueable in principle and blocked in practice.
-  // Run tests/audit_closure.py before claiming the catalog is complete - counting roots is
-  // what hid SyntheticFabric and Gunpowder for three versions.
+  // never been captured and MUST NOT be inferred, so Explosives is queueable in principle and
+  // blocked in practice. Run tests/audit_closure.py before calling the catalog complete -
+  // counting roots is what hid SyntheticFabric and Gunpowder for three versions.
+  // The 16 remaining leaves are the TERMINAL PROCESS BOUNDARY: materials IOPM intentionally
+  // does not manufacture in the v2.4.x scope. That is a POLICY recorded in the audit, never a
+  // property read off a TypeId - Gunpowder and Polymer both carry an Ingot TypeId and both are
+  // manufactured, so "it is an ingot" proves nothing about whether something is terminal.
   // A blueprint id does NOT add a recipe
   // and neither does a live identity observation. Of the eight components the v2.4.26 dump
   // added, NONE has a validated IO 1.7.7 recipe in durable project knowledge, so none is
@@ -2078,9 +2082,14 @@ void BuildKnowledgeBase() {
     // the "45 products / 45 recipes / 0 pending" milestone missed it: that count proved every
     // ROOT had a recipe and said nothing about the graph beneath. Canvas had a recipe and was
     // still unbuildable, because its only ingredient had none. See tests/audit_closure.py.
-    // Machine token unverified - "Assembler" is a PREFERENCE that orders already-eligible
-    // machines; CanUseBlueprint decides eligibility. The Auto Loom that makes Canvas is a
-    // plausible producer of the fabric too, but plausible is not observed, so it is not named.
+    // MACHINE TOKEN IS AN INFERENCE, NOT AN OBSERVATION. The producing block for
+    // SyntheticFabric has never been seen; "Assembler" is a guess at a sensible PREFERENCE and
+    // is recorded as such so nobody later mistakes it for evidence. It costs nothing if wrong:
+    // a token only ORDERS machines that are already eligible, and eligibility comes from
+    // CanUseBlueprint() at runtime - so the real producer still receives the job even when the
+    // token does not name it, and MachineRank falls back to 5000 for everything unmatched.
+    // The Auto Loom that makes Canvas is a plausible producer of the fabric too, but plausible
+    // is not observed, so it is deliberately not named here.
     "SyntheticFabric|1|Assembler|Plastic:2"
   });
 }

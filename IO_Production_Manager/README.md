@@ -489,12 +489,16 @@ recipes / 0 pending" only says every stock ROOT has a recipe; it says nothing
 about the dependencies beneath them. Canvas shipped with a recipe in 2.4.35 and
 was unbuildable on arrival because `SyntheticFabric` had none. Run
 `python tests/audit_closure.py <source.cs>` — it walks the graph and classifies
-every leaf as TERMINAL_RAW, MANUFACTURED_MISSING_RECIPE or UNKNOWN.
+every leaf as TERMINAL_PROCESS_BOUNDARY, MANUFACTURED_MISSING_RECIPE or UNKNOWN.
 
-**An ItemDef is not evidence that something is terminal.** `Gunpowder` carries
-an Ingot TypeId and would pass any "ingots are refinery output" heuristic, yet
-it is crafted in a Munitions Factory. TypeId says where an item is *sorted*, not
-whether it can be *made*.
+**TypeId is not evidence that something is terminal.** Leaves are classified
+`TERMINAL_PROCESS_BOUNDARY` — *intentionally not manufactured by IOPM in the
+current v2.4.x scope* — and membership is an explicit policy list, never derived
+from an item's TypeId or inventory category. Two live counter-examples:
+`Gunpowder` (`Ingot/Magnesium`) is crafted in a Munitions Factory, and `Polymer`
+(`Ingot/Polymer`) is made from blueprint `SyntheticPolymer`. Both are Ingot-typed
+and both are manufactured. TypeId says where an item is *sorted*, not whether it
+can be *made*.
 
 Currently one hole remains: `Gunpowder` (`Ingot/Magnesium`, referenced by
 `Explosives`) is manufactured but has no recipe, so `Explosives` is blocked in

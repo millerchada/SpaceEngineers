@@ -28,6 +28,59 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## Closure-audit semantics (docs/tooling only — artifact byte-identical, no version bump)
+
+`TERMINAL_RAW` is renamed **`TERMINAL_PROCESS_BOUNDARY`**, defined as:
+
+    Intentionally not manufactured by IOPM in the current v2.4.x scope.
+
+The old name claimed something about the ITEM ("this is raw material"). The new
+one states something about THIS SCRIPT ("we stop here"), which is the only claim
+the repo can actually support. The 16 members are unchanged - they are the
+intended v2.4.x boundary - but they are now on that list because it is a
+recorded decision, not because of what they are.
+
+### TypeId is not evidence, and the audit now cannot use it
+
+Two live counter-examples make the point on their own:
+
+    Gunpowder   MyObjectBuilder_Ingot/Magnesium   manufactured, Munitions Factory (Large)
+    Polymer     MyObjectBuilder_Ingot/Polymer     manufactured, blueprint SyntheticPolymer
+
+Both are Ingot-typed. Any "ingots are refinery output, therefore terminal" rule
+would have marked both terminal and closed the audit on a false green - and the
+Gunpowder hole is exactly the one still open.
+
+This is now enforced STRUCTURALLY rather than by discipline: `classify()` takes
+only the alias. The physical identity is never passed to it, so a TypeId-derived
+rule cannot be written there without changing the function signature, which
+should be treated as a red flag in review.
+
+### Also clarified
+
+- `SyntheticFabric`'s `Assembler` token is documented as an INFERENCE, not an
+  observation. The producing block has never been seen. It costs nothing if
+  wrong: a token only ORDERS already-eligible machines, and eligibility comes
+  from `CanUseBlueprint()` at runtime.
+- `Gunpowder`'s ingredient list "MUST NOT be inferred" is now stated in the
+  source next to the recipe set, not only in this changelog.
+
+### Status, unchanged
+
+    active recipes                46
+    manufactured missing recipes   1  (Gunpowder)
+    unresolved / ambiguous leaves  0
+    CLOSURE INCOMPLETE
+
+Waiting on the Munitions Factory (Large) tooltip for Gunpowder. The catalog is
+NOT complete and is not described as complete anywhere in the repo.
+
+### Versioning
+
+Comment and tooling changes only. The built artifact is byte-identical -
+md5 `87fa50b35e842122981d0f257b6f2004` before and after - so per repo policy no
+new executable version was created. v2.4.36 stands as the release.
+
 ## 2.4.36 — closure audit; the "complete catalog" claim was wrong
 
 Artifact 86,732; headroom 13,268. Managed recipes 45 -> 46.
@@ -49,7 +102,8 @@ second, independent instance that the same count also missed.
 Walks every ingredient of every recipe transitively from the stock roots and
 classifies each LEAF - an ingredient with no active recipe:
 
-    TERMINAL_RAW                 intentionally outside production control
+    TERMINAL_PROCESS_BOUNDARY    intentionally not manufactured by IOPM in the
+                                 current v2.4.x scope
     MANUFACTURED_MISSING_RECIPE  craftable, recipe not implemented - a real hole
     UNKNOWN                      insufficient evidence; resolve by observation
 
@@ -76,8 +130,8 @@ MANUFACTURED_MISSING_RECIPE - which is what it always was.
 
 ### Closure before and after
 
-    v2.4.35   18 leaves   16 TERMINAL_RAW   2 MISSING (Gunpowder, SyntheticFabric)   0 UNKNOWN
-    v2.4.36   17 leaves   16 TERMINAL_RAW   1 MISSING (Gunpowder)                    0 UNKNOWN
+    v2.4.35   18 leaves   16 BOUNDARY   2 MISSING (Gunpowder, SyntheticFabric)   0 UNKNOWN
+    v2.4.36   17 leaves   16 BOUNDARY   1 MISSING (Gunpowder)                    0 UNKNOWN
 
 Added: `SyntheticFabric | 1 | Assembler | Plastic:2`. Machine token unverified -
 a PREFERENCE that orders already-eligible machines, with `CanUseBlueprint`
