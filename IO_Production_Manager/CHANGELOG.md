@@ -28,6 +28,49 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.30
+
+Source 128,695 -> 129,718 (artifact 91,390; 8,610 headroom). Managed recipe set
+37 -> 38.
+
+    ArmoredPlate | 1 | Plate Stamp | SteelPlate:1, TitaniumPlate:1
+
+LIVE-VALIDATED against Industrial Overhaul v1.7.7. The first promotion out of
+the eight identity-known / recipe-pending products catalogued across
+v2.4.26-v2.4.28. Seven remain pending: Canvas, Capacitor, Concrete, Explosives,
+Girder, RadioCommunication, SolarCell.
+
+Nothing else moved. The functional diff is two lines - the version constant and
+the recipe. The physical identity `MyObjectBuilder_Component/ArmoredPlate` and
+the existing `[Stock]` value are untouched; only the recipe is new. Nothing had
+to be added to make it queueable: the blueprint id `ArmoredPlate` has been in
+the knowledge-only table since v2.4.25, and the machine token `Plate Stamp`
+already backs the SteelPlate and AluminumPlate recipes.
+
+This is the v2.4.27 principle running in the intended direction for the first
+time. Identity came first and stood on its own; the recipe arrived later and
+independently, and the `[Stock]` entry never depended on it. `ArmoredPlate`
+should now move from `RawShortage` to `Queued` or `Blocked` depending on
+ingredient availability, with no configuration change on the player's side.
+
+### Downstream demand, so a large plate order is not mistaken for a runaway
+
+`ArmoredPlate` is now a PARENT of both plates, so recursive expansion
+propagates an ArmoredPlate target into plate demand and on into ingots. At the
+current `ArmoredPlate=20000` target the full chain is:
+
+    20,000 ArmoredPlate
+      -> 20,000 SteelPlate     -> 400,000 IronIngot     (20 per plate)
+      -> 20,000 TitaniumPlate  -> 240,000 TitaniumIngot (12 per plate)
+
+Iron is not a concern at ~2.3M on hand. TITANIUM IS THE BINDING CONSTRAINT and
+should be expected to be: TitaniumPlate stock was 622 at last reading. IOPM will
+report the honest partial - `Feasible` limited by ingots actually present,
+`Blocked` for the rest with `BlockedBy=TitaniumPlate` or `TitaniumIngot` - and
+will queue only what it can support, one cycle at a time. That is correct
+behaviour, not a stall, and it is the same shape as the Electromagnet ->
+CopperWire chain that has been running all along.
+
 ## 2.4.29 — PROMOTED, live baseline
 
 Confirmed on the production server. v2.4.28 archived; v2.4.29 is the only live

@@ -201,8 +201,10 @@ in a count, or on a screen, you are reintroducing this bug.**
 
 The distinction in one line: *"may the player set a target for this"* is
 answered by `StockConfigurable`; *"can IOPM build this"* is answered by
-`_recipes`. They are independent, and eight live products currently prove it by
-being the first and not the second.
+`_recipes`. They are independent, and seven live products currently prove it by
+being the first and not the second. `ArmoredPlate` proves the other half:
+it gained a recipe in 2.4.30 with no change to its identity or its `[Stock]`
+entry, because neither ever depended on one.
 
 `[IOPM.StockDisplay] Rows` and `[IOPM.Production] StockItems` read the same
 dictionary, so they always agree. A disagreement is a real defect — it is how
@@ -464,9 +466,11 @@ non-zero target on an item with no recipe is safe and reports `RawShortage`,
 which correctly reads as "supply this yourself."
 
 As of 2.4.28 every live-observed manufactured component is a native ItemDef, so
-`[Stock]` lists all 44 of them. Eight carry no validated recipe yet —
-`ArmoredPlate`, `Canvas`, `Capacitor`, `Concrete`, `Explosives`, `Girder`,
-`RadioCommunication`, `SolarCell` — and are listed anyway.
+`[Stock]` lists all 44 of them. Seven carry no validated recipe yet — `Canvas`,
+`Capacitor`, `Concrete`, `Explosives`, `Girder`, `RadioCommunication`,
+`SolarCell` — and are listed anyway. (`ArmoredPlate` was the eighth until
+2.4.30, when its IO 1.7.7 recipe was validated; its `[Stock]` entry did not
+change, which is the point.)
 
 To make a further item stock-configurable, promote it to an ItemDef in
 `AddItemGroup("MyObjectBuilder_Component", ...)`. Being a loadout alias is
