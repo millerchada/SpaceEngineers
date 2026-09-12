@@ -1,0 +1,38 @@
+# v2.4.37 UAT - SolarCell recipe correction - PLANNING STATE
+#
+# WHAT IS BEING TESTED
+#   v2.4.34 shipped SolarCell with IronIngot:2, built from an operator reading that the
+#   consolidated IO v1.7.7 machine enumeration later superseded with IronIngot:3.
+#   audit_machine_coverage caught the mismatch; v2.4.37 corrected the recipe.
+#   This capture proves the CORRECTED recipe is the one actually running, by reading the
+#   support demand the dependency planner derived - not by trusting the source text.
+#
+# HOW THE TEST WAS DRIVEN
+#   [Stock] SolarCell raised 200 -> 250 on the live server.
+#
+# WHY PLANNING STATE MATTERS
+#   A converged end state cannot distinguish "the corrected recipe ran" from "nothing ran".
+#   Support demand can, because it is arithmetic over the recipe that is actually loaded.
+
+Stock=203
+ExistingQueued=16
+Need=31
+Feasible=31
+JobsAdded=31
+Blocked=0
+
+# Total production in flight = ExistingQueued 16 + JobsAdded 31 = 47
+
+Glass effective support       47
+CopperWire effective support  47
+SiliconWafer support         235
+IronIngot support            141
+
+# VERIFICATION - each line is 47 x the corrected per-unit quantity
+#   Glass         47 x 1 =  47   OK
+#   CopperWire    47 x 1 =  47   OK
+#   SiliconWafer  47 x 5 = 235   OK
+#   IronIngot     47 x 3 = 141   OK   <-- DECISIVE
+#
+# Under the superseded IronIngot:2 recipe this line would read 47 x 2 = 94.
+# It reads 141, so the old recipe is conclusively no longer running.

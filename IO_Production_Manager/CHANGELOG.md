@@ -28,6 +28,69 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## v2.4.37 UAT — SolarCell correction PASS
+
+Recorded under `uat/v2.4.37/`. Two captures, because a converged end state alone
+cannot distinguish "the corrected recipe ran" from "nothing ran".
+
+`solarcell-planning.txt` is the decisive one. Raising `[Stock] SolarCell`
+200 -> 250 put 47 units in flight (16 already queued + 31 newly added), and the
+dependency planner derived:
+
+    Glass         47    = 47 x 1
+    CopperWire    47    = 47 x 1
+    SiliconWafer  235   = 47 x 5
+    IronIngot     141   = 47 x 3   <-- decisive
+
+Support demand is arithmetic over the recipe ACTUALLY LOADED, not over the
+source text. Under the superseded `IronIngot:2` recipe that line would read 94.
+It reads 141, so v2.4.34's wrong recipe is conclusively no longer running.
+
+`solarcell-complete.txt` records convergence: Target 250 / Stock 250 / Queued 0
+/ Action=Satisfied, all 45 stock items Ready, nothing Blocked, Warnings 0,
+20 machines healthy. Landing exactly on target also exercises the over-commit
+guard - the 16 already-queued units were counted against demand rather than
+re-queued.
+
+This closes the loop opened by the machine-coverage audit: the audit found a
+defect in a recipe that was already running, v2.4.37 corrected it, and the live
+planner arithmetic now proves the correction took effect.
+
+### UAT evidence is now versioned
+
+`uat/vX.Y.Z/` per release, captured verbatim and never edited afterwards. One
+rolling mutable dump could only ever answer "what is the base doing now" - the
+moment the next test ran, the evidence for the previous claim was gone, leaving
+CHANGELOG claims resting on conversation history rather than a record.
+
+`uat/live_custom_data.txt` stays deliberately mutable: it is a test FIXTURE for
+the canonicalisation suite, tracking the current base on purpose so the suite
+keeps being exercised against a real config. It lives in `uat/` rather than
+`tests/fixtures/` because it is a genuine live capture; `tests/fixtures/` holds
+constructed inputs.
+
+### Bookkeeping correction
+
+The restructure report said "17 evidence files moved". The 17th is
+`evidence/README.md`, the transcription-rules document - not a machine record.
+Machine records are 16: 15 COMPLETE + Survival Kit DEFERRED. The audit roster
+always printed 16 and was correct; the prose was loose.
+
+### Investigation opened, no code changed
+
+`ConfigChangePending` remained latched true after convergence. Analysed in
+`docs/investigations/configchangepending-latch.md`. Summary: the phased reload
+flow cannot latch on its own - every path was traced - so the flag requires
+`Me.CustomData` to persistently differ from `_lastCustomDataSeen`. The leading
+explanation is the re-read in the `WriteDiagnostics` tail returning stale text
+on a server with known sync latency. It is NOT diagnostics-only: a latched flag
+re-runs `LoadConfig()` every cycle, re-parsing Custom Data and forcing
+`BlueprintReverseMap()` to rebuild. Correctness is unaffected.
+
+A one-line fix is proposed but deliberately NOT applied: a read-only
+`ConfigReloads` counter should be added first to turn the assumption into a
+measurement.
+
 ## v2.4.37 — full IO v1.7.7 grid ingest; two proven corrections
 
 Artifact 86,802; headroom 13,198. Managed recipes 46 -> 47.

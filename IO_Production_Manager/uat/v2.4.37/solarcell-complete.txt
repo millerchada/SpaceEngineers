@@ -1,0 +1,42 @@
+# v2.4.37 UAT - SolarCell recipe correction - CONVERGED STATE
+#
+# Companion to solarcell-planning.txt. That file proves the corrected recipe was LOADED;
+# this one proves the run COMPLETED and left the base healthy.
+
+[IOPM.LastPlan.SolarCell]
+Target=250
+Stock=250
+Queued=0
+Need=0
+Feasible=0
+Blocked=0
+Action=Satisfied
+
+[IOPM.Production]
+StockItems=45
+Ready=45
+Producing=0
+Blocked=0
+
+[IOPM.Machines]
+Healthy=20
+Stalled=0
+Recovering=0
+NotWorking=0
+
+[IOPM.Status]
+Version=2.4.37
+State=Running
+Sorting=OK
+Production=OK
+Warnings=0
+
+# RESULT: PASS
+#   All 45 stock items Ready, nothing Blocked, no warnings, 20 machines healthy.
+#   Stock landed exactly on Target with no overshoot, which also exercises the
+#   over-commit guard: 16 already-queued units were counted against demand rather
+#   than re-queued.
+#
+# NOT PROVEN BY THIS CAPTURE
+#   Stall recovery - Stalled=0 and Recovering=0 throughout, as they have been for the
+#   life of the script. See the README note on why that trigger is genuinely rare.
