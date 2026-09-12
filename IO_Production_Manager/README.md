@@ -6,6 +6,23 @@ v1.7.7**. Interoperates with **GOAT / GSIM** sorting tags.
 
 Version history: [CHANGELOG.md](CHANGELOG.md).
 
+## Project layout
+
+    IO_Production_Manager_v2.4.37.cs       current release source
+    IO_Production_Manager_v2.4.37.min.cs   current artifact - paste THIS
+    README.md  CHANGELOG.md
+
+    archive/vX.Y.Z/    every superseded release, grouped by version
+    tests/             audits, the release gate, the canonical-stock suite, fixtures
+    tools/             gen_io_docs.py - regenerates docs/ from evidence/
+    docs/              GENERATED; do not hand-edit
+    evidence/machines/ primary live machine evidence, one JSON per block
+    uat/               live Custom Data dumps captured from the game
+
+Run everything from the repository root:
+
+    python IO_Production_Manager/tests/run_release_gate.py            IO_Production_Manager/IO_Production_Manager_v2.4.37.cs
+
 ## Deploying — never paste the `.cs` file
 
 The `.cs` is **source**. It is now larger than the PB's own 100,000-character
@@ -488,7 +505,7 @@ which correctly reads as "supply this yourself."
 recipes / 0 pending" only says every stock ROOT has a recipe; it says nothing
 about the dependencies beneath them. Canvas shipped with a recipe in 2.4.35 and
 was unbuildable on arrival because `SyntheticFabric` had none. Run
-`python tests/audit_closure.py <source.cs>` — it walks the graph and classifies
+`python tests/audit_closure.py <source.cs>` (from this project root) — it walks the graph and classifies
 every leaf as TERMINAL_PROCESS_BOUNDARY, MANUFACTURED_MISSING_RECIPE or UNKNOWN.
 
 **TypeId is not evidence that something is terminal.** Leaves are classified

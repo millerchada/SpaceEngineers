@@ -13,6 +13,35 @@ that script does, how to set it up, and its block tags and configuration.
 | [IO_Blueprint_Sniffer](IO_Blueprint_Sniffer/) | Read-only. Captures the real blueprint `MyDefinitionId`s the game actually uses. |
 | [Endless_Drill](Endless_Drill/) | Endless Drill Mk1 — walking-drill controller (rotor / piston / welder cycle). |
 
+
+## Repository layout
+
+    tools/                     shared PB tooling, used by every script in this repo
+      build_pb.py              comment/indent stripper + minifier + compile gate
+      check_pb.py              local csc compile check against the SE API stubs
+      minify_names.py          identifier shortening for the deployment artifact
+      se_stubs.cs              hand-written SE PB API shapes (compile-check only)
+
+    <Project>/                 one directory per programmable block
+      <Project>_vX.Y.Z.cs      CURRENT release source
+      <Project>_vX.Y.Z.min.cs  CURRENT deployment artifact (gitignored, rebuildable)
+      README.md  CHANGELOG.md
+      archive/vX.Y.Z/          every superseded release pair, grouped by version
+      tests/                   project-specific tests, audits and fixtures
+      tools/                   project-specific generators
+      docs/                    generated documentation
+      evidence/                primary observed evidence the docs are generated from
+      uat/                     live dumps and fixtures captured from the game
+
+**The active project root holds the current release pair and top-level project
+docs — nothing else.** Superseded releases go to `archive/vX.Y.Z/` on promotion;
+leaving them beside the live source is how a wrong file gets pasted into a
+programmable block.
+
+Shared tooling lives at the repo root because `IO_Machine_Dump`,
+`IO_Item_Identity_Dump` and `IO_Blueprint_Sniffer` all use it. Anything that
+only serves one project lives inside that project.
+
 ## Deploying
 
 The two read-only diagnostic scripts and the drill controllers are short enough
@@ -53,14 +82,14 @@ the source plus the committed `build_pb.py`.
 
 ## Before deploying: run the release gate
 
-    python tests/run_release_gate.py IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs
+    python IO_Production_Manager/tests/run_release_gate.py \n           IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs
 
 This is the required step. It proves the checker still detects the two compile
 errors that historically reached the game (negative controls), then checks and
-builds the script under release. `build_pb.py` also compile-checks the artifact
+builds the script under release. `tools/build_pb.py` also compile-checks the artifact
 itself and DELETES it rather than leaving a broken file on disk.
 
-The artifact is minified: `minify_names.py` shortens our own private fields and
+The artifact is minified: `tools/minify_names.py` shortens our own private fields and
 method names, never a dotted member and never anything inside a string literal.
 It proves the transform is a bijection by applying the inverse mapping and
 requiring the original back byte for byte. Readable names live in the Git
@@ -72,7 +101,7 @@ usable line numbers.
     python check_pb.py IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs
     python build_pb.py IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs
 
-`check_pb.py` compiles the script locally with `csc` against `se_stubs.cs`, which
+`tools/check_pb.py` compiles the script locally with `csc` against `se_stubs.cs`, which
 holds hand-written shapes for the Space Engineers PB API. Without it the GAME is
 the first thing to see a compile error, which has cost two deploy round trips:
 `Comparison<CI>` in v2.4.3 and a shadowed local in v2.4.33.
@@ -86,7 +115,7 @@ It does NOT catch behaviour, and it does not catch an API shape that
 reported under "probable se_stubs.cs gaps" — add the member to the stubs rather
 than changing the script.
 
-`build_pb.py` is a separate concern: it verifies the comment-stripping
+`tools/build_pb.py` is a separate concern: it verifies the comment-stripping
 TRANSFORM (string literals survive byte-identical, brace/paren counts match). It
 has no idea whether the C# is valid. Passing `build_pb.py` never meant the
 script compiles — that gap is what `check_pb.py` closes.
