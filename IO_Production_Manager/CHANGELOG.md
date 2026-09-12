@@ -28,6 +28,22 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.29 — PROMOTED, live baseline
+
+Confirmed on the production server. v2.4.28 archived; v2.4.29 is the only live
+source in the folder.
+
+The [Stock]/recipe conflation is closed in all three places: seeding (2.4.27),
+planning and counting (already correct), and LCD rendering (2.4.29). Audited
+against v2.4.29 - every remaining `_recipes` reference asks a manufacturing
+question, none asks whether an item belongs in stock. Recorded as an invariant
+in the README.
+
+PARKED by decision, not oversight: the stale `_stockRowCount` on the
+no-screen skip path. Real, in the same family as 2.4.14 and 2.4.24, invisible
+on a base that has a stock screen. To be picked up the next time there is a
+reason to touch diagnostics.
+
 ## 2.4.29
 
 Source 127,764 -> 128,695 (artifact 91,331; 8,669 headroom). Recipes 37 -> 37,

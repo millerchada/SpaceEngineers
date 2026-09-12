@@ -183,6 +183,32 @@ limit; do not re-collapse the phases.
 
 ## Invariants — do not break these
 
+### A recipe never answers "is this a stock item"
+
+Closed in all three places it had leaked, and verified against v2.4.29:
+
+| Place | Was | Now |
+|---|---|---|
+| Seeding (`EnsureStockAliasesPresent`) | `_recipes` | stock-configurable ItemDefs (2.4.27) |
+| Planning / counting | already `_cfg.StockTargets` | unchanged |
+| LCD (`BuildStockText`) | `_recipes` | `_cfg.StockTargets` (2.4.29) |
+
+Every surviving use of `_recipes` asks a manufacturing question — yield lookup,
+queued-job ingredient demand, recursive expansion, `EnsureFeasible`'s
+buildability gate, `ApplyPlan`, and the table's own population. **If you find
+yourself reaching for `_recipes` to decide whether something belongs in stock,
+in a count, or on a screen, you are reintroducing this bug.**
+
+The distinction in one line: *"may the player set a target for this"* is
+answered by `StockConfigurable`; *"can IOPM build this"* is answered by
+`_recipes`. They are independent, and eight live products currently prove it by
+being the first and not the second.
+
+`[IOPM.StockDisplay] Rows` and `[IOPM.Production] StockItems` read the same
+dictionary, so they always agree. A disagreement is a real defect — it is how
+this bug was caught.
+
+
 - **`AddQueueItem()` is the only production-queue mutation.** No `ClearQueue`,
   no removal, no reduction, no reorder. Existing and manual queues are sacred.
 - **Remote/docked inventory never enters base `_onHand` or `[Stock]`.** A ship
