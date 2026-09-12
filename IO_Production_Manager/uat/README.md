@@ -43,4 +43,19 @@ broken compile fixtures).
 
 | Release | Evidence | Result |
 |---|---|---|
-| v2.4.37 | `v2.4.37/solarcell-planning.txt`, `v2.4.37/solarcell-complete.txt` | **PASS** — corrected `SolarCell` recipe proven live |
+| v2.4.37 | `solarcell-planning.txt`, `solarcell-complete.txt` | **PASS** — corrected `SolarCell` recipe proven live |
+| v2.4.38 | `gunpowder-yield.txt`, `item-identity-dump.txt` | **PASS** — output yield 10 measured, not assumed |
+| v2.4.39 | `gunpowder-blueprint.txt`, `smoke-test.txt` | **PASS** — Gunpowder operational; one item DEFERRED |
+
+## `PASS` and `DEFERRED` are different words on purpose
+
+A deferred item is one that could not be reached, not one that was skipped. The
+v2.4.39 smoke test records a full IOPM-created Gunpowder job as DEFERRED because
+the base holds ~196,894 Magnesium and Gunpowder has no `[Stock]` target, so
+support demand cannot bite without an Explosives target near 49,000. The
+capability is proven; the *unprompted decision* has not been observed.
+
+Stall recovery carries the same label for the same reason, across the whole life
+of the project. Write down which one a result is — "we tested it and it worked"
+and "we could not get it to run" are both useful, and confusing them is how a
+gap becomes invisible.

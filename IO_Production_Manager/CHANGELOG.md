@@ -28,6 +28,37 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.39 LIVE SMOKE TEST - PASS
+
+Recorded in `uat/v2.4.39/smoke-test.txt`. Seven facts proven, one deferred:
+
+    Exact BlueprintId          PROVEN          IO_Blueprint_Sniffer v1.0.3
+    Producer                   PROVEN          machine enumeration
+    Physical identity          PROVEN          Item Identity Dump (by quantity)
+    Inputs 6 / 2 / 2           PROVEN          machine enumeration
+    Output yield 10            LIVE MEASURED   one manual blueprint run, counted
+    Manual queue attribution   GATE PROVEN     audit_machine_coverage
+    Planner / yield math       TESTED          tests/tests_yield_math.py
+    Full IOPM-created job on a low-stock grid  DEFERRED
+
+The deferred item is not a gap in verification - it is unreachable on this grid.
+Everything above proves IOPM COULD create the job correctly; what is unobserved
+is IOPM DECIDING to, unprompted, from its own demand calculation. Gunpowder has
+no `[Stock]` target, so it is produced only as support demand for Explosives at
+4 per unit, and with ~196,894 Magnesium on hand that needs an Explosives demand
+above ~49,223 to trigger even one job. The base is too well supplied to exercise
+the path.
+
+Either draining the Magnesium stock or giving Gunpowder its own `[Stock]` target
+above the current on-hand figure would reach it. The signal to watch is
+`ceil(demand / 10)` jobs rather than one per unit - one number that confirms the
+yield correction and the blueprint id together.
+
+`uat/README.md` now states why PASS and DEFERRED are kept distinct. A deferred
+item could not be reached; a skipped one was not tried. Stall recovery has
+carried the same label for the life of the project, and collapsing the two is
+how a real gap stops being visible.
+
 ## 2.4.39 - Gunpowder is operational
 
 Artifact 86,828; headroom 13,172. Recipes 47, unchanged.

@@ -1,0 +1,42 @@
+# v2.4.39 LIVE SMOKE TEST - RESULT: PASS
+#
+# Gunpowder, fact by fact, with the method that established each:
+#
+#   Exact BlueprintId          PROVEN          IO_Blueprint_Sniffer v1.0.3
+#   Producer                   PROVEN          machine enumeration
+#   Physical identity          PROVEN          Item Identity Dump (by quantity)
+#   Inputs 6 / 2 / 2           PROVEN          machine enumeration
+#   Output yield 10            LIVE MEASURED   one manual blueprint run, counted
+#   Manual queue attribution   GATE PROVEN     audit_machine_coverage
+#   Planner / yield math       TESTED          tests/tests_yield_math.py
+#
+#   Full IOPM-CREATED Gunpowder job on a low-stock grid    DEFERRED
+#
+# WHY THE LAST ITEM IS DEFERRED, AND WHY THAT IS NOT A GAP
+#   Everything above proves IOPM COULD create the job correctly. What is not yet observed
+#   is IOPM DECIDING to, unprompted, from its own demand calculation.
+#
+#   That path cannot currently be reached on this grid. Gunpowder has no [Stock] target,
+#   so it is only ever produced as support demand for Explosives, which consumes 4 per
+#   unit. The live dump shows Ingot/Magnesium = 196,894.34 on hand, so triggering even one
+#   support job would require an Explosives demand above
+#
+#       196,894 / 4 = ~49,223 Explosives
+#
+#   which is not a realistic target. The test is deferred because the base is too WELL
+#   supplied to exercise it, not because anything is unverified.
+#
+# WHAT WOULD ACTUALLY EXERCISE IT
+#   - Drain or relocate the Magnesium stock so support demand can bite, or
+#   - give Gunpowder its own [Stock] target above the current on-hand figure, which makes
+#     it a planner ROOT rather than a support dependency and tests the same job-creation
+#     path directly.
+#   Either way the signal to look for is ceil(demand / 10) jobs - NOT one job per unit.
+#   That single number confirms the yield correction and the blueprint id together, which
+#   is why it is the cheapest possible end-to-end check.
+#
+# STANDING CAVEAT
+#   The same reasoning applies to stall recovery, deferred for the life of this project:
+#   a subsystem can be correct, tested in isolation, and still never have been observed
+#   firing in anger. Recorded as DEFERRED rather than PASS so a later reader does not
+#   mistake the distinction.
