@@ -1,0 +1,380 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Munitions Factory",
+  "machine_token_in_iopm": "Munitions Factory",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 26,
+  "observed_categories": {
+    "Large Ammo": 19,
+    "Hand Ammo": 7
+  },
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": [
+    {
+      "category": "Large Ammo",
+      "display": "Gunpowder",
+      "alias_hint": "Gunpowder",
+      "identity_hint": "MyObjectBuilder_Ingot/Magnesium",
+      "build_time_displayed": "0.8s",
+      "ingredients": {
+        "PotassiumNitrate": 6,
+        "Carbon": 2,
+        "Sulfur": 2
+      },
+      "notes": "CLOSES the manufactured-missing leaf. Identity previously live-observed; IO reuses the vanilla Magnesium subtype for the item the UI calls Gunpowder"
+    },
+    {
+      "category": "Large Ammo",
+      "display": "Explosives",
+      "alias_hint": "Explosives",
+      "identity_hint": "MyObjectBuilder_Component/Explosives",
+      "build_time_displayed": "1.7s",
+      "ingredients": {
+        "IronIngot": 1,
+        "Gunpowder": 4
+      },
+      "notes": "producer directly observed as Munitions Factory"
+    },
+    {
+      "category": "Large Ammo",
+      "display": "AP Autocannon Clip",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.5s",
+      "ingredients": {
+        "IronIngot": 20,
+        "CopperIngot": 6,
+        "Gunpowder": 8
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: AutocannonMagazine -> AutocannonClip (single alias, two live variants AP/DU). A 1:1 mapping is NOT proven and was not inferred.",
+      "magazine_capacity": 16
+    },
+    {
+      "category": "Large Ammo",
+      "display": "DU Autocannon Clip",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.5s",
+      "ingredients": {
+        "IronIngot": 10,
+        "DepletedUranium": 10,
+        "CopperIngot": 6,
+        "Gunpowder": 8
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: AutocannonMagazine -> AutocannonClip (single alias, two live variants AP/DU). A 1:1 mapping is NOT proven and was not inferred.",
+      "magazine_capacity": 16
+    },
+    {
+      "category": "Large Ammo",
+      "display": "DU Gatling Ammo Box",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.1s",
+      "ingredients": {
+        "IronIngot": 20,
+        "DepletedUranium": 10,
+        "CopperIngot": 10,
+        "Gunpowder": 10
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: GatlingAmmo -> NATO_25x184mm (single alias, two live variants plain/DU). A 1:1 mapping is NOT proven and was not inferred.",
+      "magazine_capacity": 140
+    },
+    {
+      "category": "Large Ammo",
+      "display": "AP Artillery Shell",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "3.3s",
+      "ingredients": {
+        "IronIngot": 8,
+        "CopperIngot": 3,
+        "Gunpowder": 3.5
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: ArtilleryShell -> LargeCalibreAmmo (single alias, three live variants AP/DUAP/HE). A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "DUAP Artillery Shell",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "3.3s",
+      "ingredients": {
+        "IronIngot": 4,
+        "DepletedUranium": 4,
+        "CopperIngot": 3,
+        "Gunpowder": 3.5
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: ArtilleryShell -> LargeCalibreAmmo (single alias, three live variants). A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "HE Artillery Shell",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "3.3s",
+      "ingredients": {
+        "IronIngot": 2,
+        "CopperIngot": 3,
+        "Gunpowder": 10
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: ArtilleryShell -> LargeCalibreAmmo (single alias, three live variants). A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "Large AP Railgun Sabot",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "5.8s",
+      "ingredients": {
+        "IronIngot": 10,
+        "CopperIngot": 5,
+        "AluminumIngot": 10,
+        "TitaniumIngot": 10
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: LargeRailgunSabot -> LargeRailgunAmmo (single alias, AP/DUAP live variants). A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "Large DUAP Railgun Sabot",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "5.8s",
+      "ingredients": {
+        "IronIngot": 10,
+        "CopperIngot": 5,
+        "AluminumIngot": 10,
+        "DepletedUranium": 10
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: LargeRailgunSabot -> LargeRailgunAmmo (single alias, AP/DUAP live variants). A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "AP Assault Cannon Shell",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "1.7s",
+      "ingredients": {
+        "IronIngot": 4,
+        "CopperIngot": 1.5,
+        "Gunpowder": 1.5
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: AssaultCannonShell -> MediumCalibreAmmo and the live-observed MediumCalibreAmmoHE; which variant maps to which is NOT proven. A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "DUAP Assault Cannon Shell",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "1.7s",
+      "ingredients": {
+        "IronIngot": 2,
+        "DepletedUranium": 2,
+        "CopperIngot": 1.5,
+        "Gunpowder": 1.5
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: AssaultCannonShell -> MediumCalibreAmmo / MediumCalibreAmmoHE. A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "HE Assault Cannon Shell",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "1.7s",
+      "ingredients": {
+        "IronIngot": 1,
+        "CopperIngot": 1.5,
+        "Gunpowder": 4
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: AssaultCannonShell -> MediumCalibreAmmo / MediumCalibreAmmoHE. A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "HE Rocket",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.1s",
+      "ingredients": {
+        "LargeSteelTube": 5,
+        "CopperWire": 5,
+        "Gunpowder": 30
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: Missile -> Missile200mm (single alias, live Rocket and HE Rocket variants). A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "Light Turret Box",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "1.2s",
+      "ingredients": {
+        "IronIngot": 15,
+        "CopperIngot": 5,
+        "Gunpowder": 5
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: InteriorTurret_Mag_50rd is a live-observed subtype whose 50-round capacity matches, but the mapping is not proven; UI result text also read \"Small Turret Box\". A 1:1 mapping is NOT proven and was not inferred.",
+      "magazine_capacity": 50
+    },
+    {
+      "category": "Large Ammo",
+      "display": "Rocket",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.1s",
+      "ingredients": {
+        "LargeSteelTube": 5,
+        "CopperWire": 5,
+        "Gunpowder": 20
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: Missile -> Missile200mm (single alias, live Rocket and HE Rocket variants). A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "Gatling Ammo Box",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.1s",
+      "ingredients": {
+        "IronIngot": 30,
+        "CopperIngot": 10,
+        "Gunpowder": 10
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: GatlingAmmo -> NATO_25x184mm (single alias, plain/DU live variants). A 1:1 mapping is NOT proven and was not inferred.",
+      "magazine_capacity": 140
+    },
+    {
+      "category": "Large Ammo",
+      "display": "Small AP Railgun Sabot",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "5.8s",
+      "ingredients": {
+        "IronIngot": 2,
+        "CopperIngot": 1,
+        "AluminumIngot": 2,
+        "TitaniumIngot": 2
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: SmallRailgunSabot -> SmallRailgunAmmo (single alias, AP/DUAP live variants). A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Large Ammo",
+      "display": "Small DUAP Railgun Sabot",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "5.8s",
+      "ingredients": {
+        "IronIngot": 2,
+        "CopperIngot": 1,
+        "AluminumIngot": 2,
+        "DepletedUranium": 2
+      },
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: SmallRailgunSabot -> SmallRailgunAmmo (single alias, AP/DUAP live variants). A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Hand Ammo",
+      "display": "MR-20 Rifle Magazine",
+      "alias_hint": "MR20RifleMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/AutomaticRifleGun_Mag_20rd",
+      "build_time_displayed": "3.3s ~ 4.2s",
+      "ingredients": {
+        "IronIngot": 0.8,
+        "CopperIngot": 0.2,
+        "Gunpowder": 0.15
+      },
+      "magazine_capacity": 20,
+      "identity_confidence": "historical alias table, not re-confirmed live"
+    },
+    {
+      "category": "Hand Ammo",
+      "display": "S-10E Pistol Magazine",
+      "alias_hint": "S10EPistolMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/ElitePistolMagazine",
+      "build_time_displayed": "2.1s",
+      "ingredients": {
+        "IronIngot": 0.3,
+        "CopperIngot": 0.1,
+        "Gunpowder": 0.1
+      },
+      "magazine_capacity": 10,
+      "identity_confidence": "historical alias table, not re-confirmed live"
+    },
+    {
+      "category": "Hand Ammo",
+      "display": "S-20A Pistol Magazine",
+      "alias_hint": "S20APistolMagazine",
+      "identity_hint": null,
+      "build_time_displayed": "2.5s",
+      "ingredients": {
+        "IronIngot": 0.5,
+        "CopperIngot": 0.1,
+        "Gunpowder": 0.1
+      },
+      "magazine_capacity": 20,
+      "identity_confidence": "UNRESOLVED - the repo holds only S-10, S-10E and S-10A pistol magazines. No S-20A entry exists anywhere; nothing was inferred from the display name."
+    },
+    {
+      "category": "Hand Ammo",
+      "display": "MR-8P Rifle Magazine",
+      "alias_hint": "MR8PRifleMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/PreciseAutomaticRifleGun_Mag_5rd",
+      "build_time_displayed": "3.3s ~ 4.2s",
+      "ingredients": {
+        "IronIngot": 0.8,
+        "CopperIngot": 0.2,
+        "Gunpowder": 0.15
+      },
+      "magazine_capacity": 8,
+      "identity_confidence": "CONFLICT - the repo subtype ends _5rd; the live UI shows capacity 8. Capacity alone is NOT proof of a different subtype and no replacement has been inferred."
+    },
+    {
+      "category": "Hand Ammo",
+      "display": "MR-50A Rifle Magazine",
+      "alias_hint": "MR50ARifleMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/RapidFireAutomaticRifleGun_Mag_50rd",
+      "build_time_displayed": "4.2s",
+      "ingredients": {
+        "IronIngot": 2,
+        "CopperIngot": 0.5,
+        "Gunpowder": 0.4
+      },
+      "magazine_capacity": 50,
+      "identity_confidence": "historical alias table, not re-confirmed live"
+    },
+    {
+      "category": "Hand Ammo",
+      "display": "Basic Pistol Magazine",
+      "alias_hint": "BasicPistolMagazine",
+      "identity_hint": null,
+      "build_time_displayed": "1s ~ 5s",
+      "ingredients": {
+        "Gravel": 10
+      },
+      "magazine_capacity": 10,
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: SemiAutoPistolMagazine / ElitePistolMagazine / FullAutoPistolMagazine. A 1:1 mapping is NOT proven and was not inferred."
+    },
+    {
+      "category": "Hand Ammo",
+      "display": "MR-30E Rifle Magazine",
+      "alias_hint": "MR30ERifleMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/UltimateAutomaticRifleGun_Mag_30rd",
+      "build_time_displayed": "4.2s",
+      "ingredients": {
+        "IronIngot": 1.2,
+        "CopperIngot": 0.4,
+        "Gunpowder": 0.25
+      },
+      "magazine_capacity": 30,
+      "identity_confidence": "historical alias table, not re-confirmed live"
+    }
+  ]
+}

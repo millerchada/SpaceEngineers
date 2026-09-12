@@ -73,9 +73,14 @@ def main():
 
     totals = {'MANAGED': 0, 'KNOWN_IDENTITY_ONLY': 0, 'MISSING_FROM_IOPM': 0,
               'INTENTIONAL_EXCLUDE': 0, 'UNKNOWN': 0}
-    mismatches, unresolved, producer_gaps = [], [], []
+    mismatches, unresolved, producer_gaps, multi, deferred = [], [], [], [], []
 
     for ev in machines:
+        # A DEFERRED machine is a recorded decision, not an oversight. It is listed in the
+        # coverage roster with its reason so a later pass cannot mistake it for unaudited.
+        if ev['enumeration'] == 'DEFERRED':
+            deferred.append((ev['machine'], ev.get('deferred_reason', 'no reason recorded')))
+            continue
         print('=' * 116)
         print('MACHINE COVERAGE - %s (%s)' % (ev['machine'], ev['mod']))
         print('enumeration: %s | observed recipes: %d | categories: %s'
@@ -88,6 +93,13 @@ def main():
 
         for r in ev['recipes']:
             disp = r['display']
+            # MULTI-OUTPUT is an ARCHITECTURE GAP, not a classification. IOPM models one
+            # blueprint -> one product; a recipe with coproducts cannot be represented without
+            # coproduct accounting, and forcing it into the one-output model would make the
+            # planner re-run the recipe because only one output was ever counted. Reported
+            # separately and never silently flattened.
+            if r.get('recipe_shape') == 'MULTI_OUTPUT':
+                multi.append((ev['machine'], disp, r.get('outputs', []), r['ingredients']))
             hint = r.get('alias_hint')
             ident_hint = r.get('identity_hint')
 
@@ -199,6 +211,23 @@ def main():
     else:
         print('  ingredient mismatches: none')
     print()
+    if multi:
+        print('  MULTI-OUTPUT RECIPES (%d) - ARCHITECTURE GAP, not representable today' % len(multi))
+        for m, disp, outs, ings in multi:
+            print('    %s [%s]' % (disp, m))
+            print('      inputs : %s' % ', '.join('%s %s' % (k, v) for k, v in ings.items()))
+            for o in outs:
+                print('      output : %-22s x%-4s identity %s'
+                      % (o['display'], o['qty'], o.get('identity_hint') or '-- unresolved --'))
+        print('      IOPM models one blueprint -> one product. Representing these needs')
+        print('      coproduct accounting and a planning policy that does not re-run a recipe')
+        print('      because only one of its outputs was counted.')
+        print()
+    if deferred:
+        print('  DEFERRED MACHINES (%d) - deliberately not enumerated, NOT unaudited' % len(deferred))
+        for m, why in deferred:
+            print('    %-24s %s' % (m, why))
+        print()
     if producer_gaps:
         print('  PRODUCER GAPS (%d) - IOPM has a recipe whose machine token does not name the'
               % len(producer_gaps))
@@ -214,8 +243,13 @@ def main():
         for d, why in unresolved:
             print('    %-28s %s' % (d, why))
     print()
-    print('  Machines audited: %s' % ', '.join(
-        '%s (%s)' % (m['machine'], m['enumeration']) for m in machines))
+    print()
+    print('  COVERAGE ROSTER')
+    for m in machines:
+        print('    %-28s %-9s %3d entries' % (m['machine'], m['enumeration'],
+                                              len(m['recipes'])))
+    print('    %-28s %-9s %3d entries'
+          % ('TOTAL', '', sum(len(m['recipes']) for m in machines)))
     print('  GLOBAL IO MACHINE COVERAGE IS NOT ESTABLISHED - only the machines listed above')
     print('  have been enumerated. Every other production block is UNAUDITED, not clean.')
     return 0

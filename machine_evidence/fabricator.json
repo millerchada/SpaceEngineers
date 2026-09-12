@@ -1,0 +1,207 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Fabricator",
+  "machine_token_in_iopm": "Fabricator",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 14,
+  "observed_categories": {
+    "Components": 7,
+    "Basic Tools": 6,
+    "Basic Ammo": 1
+  },
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": [
+    {
+      "category": "Components",
+      "display": "Alkaline Power Cell",
+      "alias_hint": "AlkalinePowerCell",
+      "identity_hint": null,
+      "build_time_displayed": "2s ~ 6.7s",
+      "ingredients": {
+        "SteelPlate": 1,
+        "CopperIngot": 1,
+        "CopperWire": 1,
+        "NickelIngot": 1,
+        "Ice": 1
+      },
+      "not_craftable_inputs": [
+        "Ice"
+      ],
+      "identity_confidence": "UNRESOLVED - blueprint id AlkalinePowerCell is in the repo knowledge table but no physical identity has been observed"
+    },
+    {
+      "category": "Components",
+      "display": "Electromagnet",
+      "alias_hint": "Electromagnet",
+      "identity_hint": "MyObjectBuilder_Component/Electromagnet",
+      "build_time_displayed": "0.7s ~ 3.3s",
+      "ingredients": {
+        "IronIngot": 1.5,
+        "NickelIngot": 1,
+        "CopperWire": 3
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Heating Element",
+      "alias_hint": "HeatingElement",
+      "identity_hint": "MyObjectBuilder_Component/HeatingElement",
+      "build_time_displayed": "0.7s ~ 2.2s",
+      "ingredients": {
+        "NickelIngot": 5,
+        "CopperIngot": 5
+      }
+    },
+    {
+      "category": "Components",
+      "display": "10x Lightbulb",
+      "alias_hint": "Lightbulb",
+      "identity_hint": "MyObjectBuilder_Component/Lightbulb",
+      "build_time_displayed": "1.7s ~ 5.6s",
+      "ingredients": {
+        "Glass": 1,
+        "CopperWire": 10
+      },
+      "output_qty": 10,
+      "notes": "EXPLICIT displayed output quantity 10 - the one proven non-unity yield"
+    },
+    {
+      "category": "Components",
+      "display": "Basic Computer",
+      "alias_hint": "BasicComputer",
+      "identity_hint": "MyObjectBuilder_Component/Computer",
+      "build_time_displayed": "0.3s ~ 1.7s",
+      "ingredients": {
+        "CopperWire": 3,
+        "SiliconWafer": 2
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Construction Comp.",
+      "alias_hint": "Construction",
+      "identity_hint": "MyObjectBuilder_Component/Construction",
+      "build_time_displayed": "0.3s ~ 1.7s",
+      "ingredients": {
+        "IronIngot": 5
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Metal Grid",
+      "alias_hint": "MetalGrid",
+      "identity_hint": "MyObjectBuilder_Component/MetalGrid",
+      "build_time_displayed": "0.7s",
+      "ingredients": {
+        "IronIngot": 3,
+        "NickelIngot": 3,
+        "CobaltIngot": 3
+      }
+    },
+    {
+      "category": "Basic Tools",
+      "display": "Grinder",
+      "alias_hint": "Grinder",
+      "identity_hint": null,
+      "build_time_displayed": "3.3s ~ 16.7s",
+      "ingredients": {
+        "NickelIngot": 1,
+        "CopperWire": 1,
+        "IronIngot": 3
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "notes": "feeds Enhanced Grinder on the Assembler"
+    },
+    {
+      "category": "Basic Tools",
+      "display": "Hand Drill",
+      "alias_hint": "HandDrill",
+      "identity_hint": null,
+      "build_time_displayed": "3.3s ~ 16.7s",
+      "ingredients": {
+        "LargeSteelTube": 1,
+        "CopperWire": 1,
+        "IronIngot": 3
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "notes": "feeds Enhanced Hand Drill on the Assembler"
+    },
+    {
+      "category": "Basic Tools",
+      "display": "Hydrogen Bottle",
+      "alias_hint": "HydrogenBottle",
+      "identity_hint": null,
+      "build_time_displayed": "3.3s ~ 16.7s",
+      "ingredients": {
+        "LargeSteelTube": 5,
+        "NickelIngot": 15
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "notes": "identical recipe also on Assembler and Advanced Assembler"
+    },
+    {
+      "category": "Basic Tools",
+      "display": "Oxygen Bottle",
+      "alias_hint": "OxygenBottle",
+      "identity_hint": null,
+      "build_time_displayed": "3.3s ~ 16.7s",
+      "ingredients": {
+        "LargeSteelTube": 5,
+        "NickelIngot": 15
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "notes": "identical recipe also on Assembler and Advanced Assembler"
+    },
+    {
+      "category": "Basic Tools",
+      "display": "Basic Pistol",
+      "alias_hint": "BasicPistol",
+      "identity_hint": null,
+      "build_time_displayed": "2.7s ~ 13.3s",
+      "ingredients": {
+        "IronIngot": 1,
+        "NickelIngot": 0.3,
+        "SmallSteelTube": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "notes": "uses Basic Pistol Magazine"
+    },
+    {
+      "category": "Basic Tools",
+      "display": "Welder",
+      "alias_hint": "Welder",
+      "identity_hint": null,
+      "build_time_displayed": "3.3s ~ 16.7s",
+      "ingredients": {
+        "CopperWire": 1,
+        "SmallSteelTube": 1,
+        "IronIngot": 3
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "notes": "feeds Enhanced Welder on the Assembler"
+    },
+    {
+      "category": "Basic Ammo",
+      "display": "Basic Pistol Magazine",
+      "alias_hint": "BasicPistolMagazine",
+      "identity_hint": null,
+      "build_time_displayed": "1s ~ 5s",
+      "ingredients": {
+        "Gravel": 10
+      },
+      "magazine_capacity": 10,
+      "identity_confidence": "UNRESOLVED - the live UI exposes variants the repo cannot tell apart. Candidate alias(es) in the repo: SemiAutoPistolMagazine (S-10), ElitePistolMagazine (S-10E), FullAutoPistolMagazine (S-10A). A 1:1 mapping is NOT proven and was not inferred."
+    }
+  ]
+}

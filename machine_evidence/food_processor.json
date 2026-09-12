@@ -1,0 +1,384 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Food Processor",
+  "machine_token_in_iopm": "Food Processor",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 24,
+  "observed_categories": {
+    "Food Items": 20,
+    "Harvesting": 4
+  },
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": [
+    {
+      "category": "Food Items",
+      "display": "Cooked Mammal Meat",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "MammalMeatRaw": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "MammalMeatRaw"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Cooked Insect Meat",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "InsectMeatRaw": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "InsectMeatRaw"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Kelp Crisp)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Algae": 4
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "Algae"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Fruit Bar)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 1,
+        "Fruit": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "Grain",
+        "Fruit"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Garden Slaw)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Vegetables": 2,
+        "Fruit": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "Vegetables",
+        "Fruit"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Red Pellets)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Fruit": 2,
+        "Vegetables": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "Fruit",
+        "Vegetables"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Chili)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Vegetables": 3,
+        "Fruit": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "Vegetables",
+        "Fruit"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Flatbread)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 1,
+        "Vegetables": 1,
+        "Fruit": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "Grain",
+        "Vegetables",
+        "Fruit"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Ramen)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 1,
+        "Vegetables": 1,
+        "Algae": 2
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "Grain",
+        "Vegetables",
+        "Algae"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Fruit Pastry)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 2,
+        "Fruit": 2
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "Grain",
+        "Fruit"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Veggie Burger)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 1,
+        "Vegetables": 2,
+        "Mushrooms": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "Grain",
+        "Vegetables",
+        "Mushrooms"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Curry)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 1,
+        "Vegetables": 1,
+        "Fruit": 2
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "not_craftable_inputs": [
+        "Grain",
+        "Vegetables",
+        "Fruit"
+      ]
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Green Pellets)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Vegetables": 1,
+        "Algae": 2,
+        "CookedInsectMeat": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Dumplings)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 2,
+        "Vegetables": 1,
+        "Mushrooms": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Spaghetti)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 3,
+        "Vegetables": 1,
+        "Mushrooms": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Lasagna)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 2,
+        "Vegetables": 1,
+        "CookedMammalMeat": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Burrito)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 2,
+        "Vegetables": 2,
+        "CookedMammalMeat": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Frontier Stew)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 1,
+        "Mushrooms": 2,
+        "Algae": 2,
+        "CookedInsectMeat": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Seared Sabiroid)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 1,
+        "Vegetables": 1,
+        "Mushrooms": 1,
+        "Algae": 1,
+        "CookedInsectMeat": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Food Items",
+      "display": "Meal Pack (Steak Dinner)",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 1,
+        "Vegetables": 1,
+        "Mushrooms": 1,
+        "Fruit": 1,
+        "CookedMammalMeat": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Harvesting",
+      "display": "Harvest Fruit Seeds",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Fruit": 1
+      },
+      "not_craftable_inputs": [
+        "Fruit"
+      ],
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Harvesting",
+      "display": "Harvest Grain Seeds",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Grain": 1
+      },
+      "not_craftable_inputs": [
+        "Grain"
+      ],
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Harvesting",
+      "display": "Harvest Vegetable Seeds",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Vegetables": 1
+      },
+      "not_craftable_inputs": [
+        "Vegetables"
+      ],
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Harvesting",
+      "display": "Harvest Mushroom Spores",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "2.7s",
+      "ingredients": {
+        "Mushrooms": 1
+      },
+      "not_craftable_inputs": [
+        "Mushrooms"
+      ],
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    }
+  ]
+}

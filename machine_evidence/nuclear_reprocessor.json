@@ -1,0 +1,61 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Nuclear Reprocessor",
+  "machine_token_in_iopm": "Nuclear Reprocessor",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 1,
+  "observed_categories": {
+    "Reprocessing": 1
+  },
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": [
+    {
+      "category": "Reprocessing",
+      "display": "Uranium Reprocessing",
+      "alias_hint": null,
+      "identity_hint": null,
+      "build_time_displayed": "3.3s",
+      "ingredients": {
+        "SpentFuel": 10,
+        "Ice": 5,
+        "Sulfur": 2,
+        "PotassiumNitrate": 3
+      },
+      "recipe_shape": "MULTI_OUTPUT",
+      "not_craftable_inputs": [
+        "SpentFuel",
+        "Ice"
+      ],
+      "outputs": [
+        {
+          "display": "Nuclear Fuel",
+          "qty": 3,
+          "identity_hint": null
+        },
+        {
+          "display": "Depleted Uranium",
+          "qty": 7,
+          "identity_hint": null
+        },
+        {
+          "display": "Nuclear Waste",
+          "qty": 10,
+          "identity_hint": null
+        }
+      ],
+      "identity_confidence": "UNRESOLVED - SpentFuel is live-observed as MyObjectBuilder_Ingot/SpentFuel, but Nuclear Fuel and Nuclear Waste identities were NOT inferred from display names",
+      "notes": "ARCHITECTURE GAP: three simultaneous outputs. IOPM models one blueprint -> one product, so this cannot be represented without coproduct accounting. Do NOT force it into the one-output model."
+    }
+  ]
+}

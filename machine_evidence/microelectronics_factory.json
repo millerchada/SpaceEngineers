@@ -1,0 +1,89 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Microelectronics Factory",
+  "machine_token_in_iopm": "Microelectronics Factory",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 5,
+  "observed_categories": {
+    "Components": 5
+  },
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": [
+    {
+      "category": "Components",
+      "display": "Advanced Computer",
+      "alias_hint": "AdvancedComputer",
+      "identity_hint": "MyObjectBuilder_Component/AdvancedComputer",
+      "build_time_displayed": "0.7s",
+      "ingredients": {
+        "GoldWire": 3,
+        "SiliconWafer": 2,
+        "Plastic": 2
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Basic Computer",
+      "alias_hint": "BasicComputer",
+      "identity_hint": "MyObjectBuilder_Component/Computer",
+      "build_time_displayed": "0.3s ~ 1.7s",
+      "ingredients": {
+        "CopperWire": 3,
+        "SiliconWafer": 2
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Sensor Cluster",
+      "alias_hint": "SensorCluster",
+      "identity_hint": "MyObjectBuilder_Component/Detector",
+      "build_time_displayed": "1.3s",
+      "ingredients": {
+        "Glass": 1,
+        "BasicComputer": 2,
+        "CopperWire": 3,
+        "SiliconWafer": 3,
+        "NickelIngot": 3
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Display",
+      "alias_hint": "Display",
+      "identity_hint": "MyObjectBuilder_Component/Display",
+      "build_time_displayed": "1.3s",
+      "ingredients": {
+        "CopperWire": 2,
+        "SiliconWafer": 3,
+        "Plastic": 2,
+        "SilverIngot": 0.1,
+        "BasicComputer": 1,
+        "NickelIngot": 1
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Thermocouple",
+      "alias_hint": "Thermocouple",
+      "identity_hint": "MyObjectBuilder_Component/Thermocouple",
+      "build_time_displayed": "1.3s",
+      "ingredients": {
+        "SiliconWafer": 2,
+        "CopperWire": 3,
+        "Plastic": 1,
+        "AluminumIngot": 2
+      }
+    }
+  ]
+}

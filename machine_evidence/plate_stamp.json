@@ -1,0 +1,79 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Plate Stamp",
+  "machine_token_in_iopm": "Plate Stamp",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 5,
+  "observed_categories": {
+    "Components": 5
+  },
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": [
+    {
+      "category": "Components",
+      "display": "Armored Plate",
+      "alias_hint": "ArmoredPlate",
+      "identity_hint": "MyObjectBuilder_Component/ArmoredPlate",
+      "build_time_displayed": "1s",
+      "ingredients": {
+        "SteelPlate": 1,
+        "TitaniumPlate": 1
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Composite Plate",
+      "alias_hint": "CompositePlate",
+      "identity_hint": null,
+      "build_time_displayed": "1.7s",
+      "ingredients": {
+        "Ceramic": 0.5,
+        "TantalumIngot": 0.09,
+        "DepletedUranium": 0.1,
+        "ArmoredPlate": 0.75
+      },
+      "identity_confidence": "UNRESOLVED - the repo holds a blueprint id under the historical name CompositeArmor. Equality with the live \"Composite Plate\" is NOT proven and was not assumed."
+    },
+    {
+      "category": "Components",
+      "display": "Aluminum Plate",
+      "alias_hint": "AluminumPlate",
+      "identity_hint": "MyObjectBuilder_Component/InteriorPlate",
+      "build_time_displayed": "0.3s",
+      "ingredients": {
+        "AluminumIngot": 5
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Steel Plate",
+      "alias_hint": "SteelPlate",
+      "identity_hint": "MyObjectBuilder_Component/SteelPlate",
+      "build_time_displayed": "0.3s ~ 1.7s",
+      "ingredients": {
+        "IronIngot": 20
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Titanium Plate",
+      "alias_hint": "TitaniumPlate",
+      "identity_hint": "MyObjectBuilder_Component/TitaniumPlate",
+      "build_time_displayed": "0.3s",
+      "ingredients": {
+        "TitaniumIngot": 12
+      }
+    }
+  ]
+}

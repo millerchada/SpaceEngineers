@@ -1,0 +1,219 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Nano-Assembler",
+  "machine_token_in_iopm": "NanoAssembler;Nano-Assembler",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 13,
+  "observed_categories": {
+    "Components": 5,
+    "Elite Tools": 6,
+    "High-Tech Ammo": 2
+  },
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": [
+    {
+      "category": "Components",
+      "display": "Electron-Matrix Cell",
+      "alias_hint": "ElectronMatrix",
+      "identity_hint": "MyObjectBuilder_Component/ElectronMatrix",
+      "build_time_displayed": "6.2s",
+      "ingredients": {
+        "ArmorGlass": 1,
+        "TantalumIngot": 0.5,
+        "LaserEmitter": 1,
+        "GoldWire": 2,
+        "Polymer": 2
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Full-Spectrum Solar Cell",
+      "alias_hint": "FSSolarCell",
+      "identity_hint": "MyObjectBuilder_Component/FSSolarCell",
+      "build_time_displayed": "2.5s",
+      "ingredients": {
+        "ArmorGlass": 1,
+        "TantalumIngot": 0.2,
+        "GoldWire": 1,
+        "SiliconWafer": 5,
+        "Plastic": 3,
+        "TitaniumIngot": 0.5
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Gravity Comp.",
+      "alias_hint": "GravityGenerator",
+      "identity_hint": "MyObjectBuilder_Component/GravityGenerator",
+      "build_time_displayed": "6.2s",
+      "ingredients": {
+        "TantalumIngot": 5,
+        "GoldWire": 30,
+        "CobaltIngot": 25,
+        "SilverIngot": 20,
+        "Electromagnet": 15
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Thruster Comp.",
+      "alias_hint": "Thrust",
+      "identity_hint": "MyObjectBuilder_Component/Thrust",
+      "build_time_displayed": "2.5s",
+      "ingredients": {
+        "Electromagnet": 6,
+        "CobaltIngot": 10,
+        "GoldWire": 3,
+        "PlatinumIngot": 0.5
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Quantum Computer",
+      "alias_hint": "QuantumComputer",
+      "identity_hint": "MyObjectBuilder_Component/QuantumComputer",
+      "build_time_displayed": "1.2s",
+      "ingredients": {
+        "TantalumIngot": 0.1,
+        "PlatinumIngot": 0.2,
+        "GoldWire": 6,
+        "AdvancedComputer": 2,
+        "AluminumPlate": 2
+      }
+    },
+    {
+      "category": "Elite Tools",
+      "display": "PRO-1 Rocket Launcher",
+      "alias_hint": "PRO1RocketLauncher",
+      "identity_hint": null,
+      "build_time_displayed": "8.3s",
+      "ingredients": {
+        "TitaniumIngot": 7,
+        "SiliconWafer": 2,
+        "LargeSteelTube": 4,
+        "Plastic": 4,
+        "GoldWire": 3
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "notes": "uses Rocket"
+    },
+    {
+      "category": "Elite Tools",
+      "display": "Elite Grinder",
+      "alias_hint": "EliteGrinder",
+      "identity_hint": null,
+      "build_time_displayed": "4.2s",
+      "ingredients": {
+        "LaserEmitter": 1,
+        "TantalumIngot": 0.25,
+        "GoldWire": 2,
+        "Motor": 1,
+        "TitaniumPlate": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Elite Tools",
+      "display": "S-10E Pistol",
+      "alias_hint": "S10EPistol",
+      "identity_hint": null,
+      "build_time_displayed": "5s",
+      "ingredients": {
+        "AluminumIngot": 2,
+        "Plastic": 1,
+        "SmallSteelTube": 1,
+        "Glass": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "notes": "uses S-10E Pistol Magazine"
+    },
+    {
+      "category": "Elite Tools",
+      "display": "Elite Hand Drill",
+      "alias_hint": "EliteHandDrill",
+      "identity_hint": null,
+      "build_time_displayed": "4.2s",
+      "ingredients": {
+        "TantalumIngot": 0.5,
+        "LargeSteelTube": 1,
+        "PlatinumIngot": 1,
+        "GoldWire": 4,
+        "Motor": 1,
+        "TitaniumPlate": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product"
+    },
+    {
+      "category": "Elite Tools",
+      "display": "MR-30E Rifle",
+      "alias_hint": "MR30ERifle",
+      "identity_hint": null,
+      "build_time_displayed": "4.2s",
+      "ingredients": {
+        "TitaniumIngot": 1,
+        "Plastic": 2,
+        "SmallSteelTube": 2,
+        "TantalumIngot": 0.1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "notes": "uses MR-30E Rifle Magazine; vanilla 5.56 magazine shown Not Craftable"
+    },
+    {
+      "category": "Elite Tools",
+      "display": "Elite Welder",
+      "alias_hint": "EliteWelder",
+      "identity_hint": null,
+      "build_time_displayed": "4.2s",
+      "ingredients": {
+        "GoldWire": 2,
+        "PlatinumIngot": 0.5,
+        "Capacitor": 2,
+        "LaserEmitter": 1,
+        "AluminumPlate": 1
+      },
+      "identity_confidence": "UNRESOLVED - no physical TypeId/SubtypeId has ever been observed for this product",
+      "notes": "UI ingredient \"Capacitor Cell\" reconciles to the canonical Capacitor alias"
+    },
+    {
+      "category": "High-Tech Ammo",
+      "display": "S-10E Pistol Magazine",
+      "alias_hint": "S10EPistolMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/ElitePistolMagazine",
+      "build_time_displayed": "2.1s",
+      "ingredients": {
+        "IronIngot": 0.3,
+        "CopperIngot": 0.1,
+        "Gunpowder": 0.1
+      },
+      "magazine_capacity": 10,
+      "identity_confidence": "historical alias table, not re-confirmed live",
+      "notes": "also observed on Munitions Factory"
+    },
+    {
+      "category": "High-Tech Ammo",
+      "display": "MR-30E Rifle Magazine",
+      "alias_hint": "MR30ERifleMagazine",
+      "identity_hint": "MyObjectBuilder_AmmoMagazine/UltimateAutomaticRifleGun_Mag_30rd",
+      "build_time_displayed": "4.2s",
+      "ingredients": {
+        "IronIngot": 1.2,
+        "CopperIngot": 0.4,
+        "Gunpowder": 0.25
+      },
+      "magazine_capacity": 30,
+      "identity_confidence": "historical alias table, not re-confirmed live",
+      "notes": "also observed on Munitions Factory"
+    }
+  ]
+}

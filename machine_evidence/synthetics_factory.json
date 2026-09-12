@@ -1,0 +1,73 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Synthetics Factory",
+  "machine_token_in_iopm": "Synthetics Factory",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 4,
+  "observed_categories": {
+    "Components": 4
+  },
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": [
+    {
+      "category": "Components",
+      "display": "Asphalt",
+      "alias_hint": "Asphalt",
+      "identity_hint": null,
+      "build_time_displayed": "0.2s",
+      "ingredients": {
+        "Gravel": 12,
+        "OilSand": 3
+      },
+      "not_craftable_inputs": [
+        "OilSand"
+      ],
+      "identity_confidence": "UNRESOLVED - blueprint id Asphalt is in the repo knowledge table but no physical TypeId/SubtypeId has ever been observed"
+    },
+    {
+      "category": "Components",
+      "display": "Plastic",
+      "alias_hint": "Plastic",
+      "identity_hint": "MyObjectBuilder_Component/Plastic",
+      "build_time_displayed": "0.5s",
+      "ingredients": {
+        "Polymer": 1.5
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Rubber",
+      "alias_hint": "Rubber",
+      "identity_hint": "MyObjectBuilder_Component/Rubber",
+      "build_time_displayed": "0.7s",
+      "ingredients": {
+        "Polymer": 2
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Synthetic Polymer",
+      "alias_hint": "Polymer",
+      "identity_hint": "MyObjectBuilder_Ingot/Polymer",
+      "build_time_displayed": "1.7s",
+      "ingredients": {
+        "SiliconWafer": 1,
+        "Carbon": 1.5,
+        "Sulfur": 0.5
+      },
+      "display_result": "Polymer",
+      "notes": "blueprint displayed as Synthetic Polymer; result item explicitly shown as Polymer"
+    }
+  ]
+}

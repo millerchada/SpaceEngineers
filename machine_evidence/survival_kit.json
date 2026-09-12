@@ -1,0 +1,22 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Survival Kit",
+  "machine_token_in_iopm": "Survival Kit",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "DEFERRED",
+  "deferred_reason": "AllowSurvivalKitFallback=false, so IOPM never queues to it. Deliberately deferred, NOT unaudited - do not let a later pass mistake this for an oversight.",
+  "observed_recipes": 0,
+  "observed_categories": {},
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": []
+}

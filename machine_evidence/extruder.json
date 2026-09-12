@@ -1,0 +1,54 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Extruder",
+  "machine_token_in_iopm": "Extruder",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 3,
+  "observed_categories": {
+    "Components": 3
+  },
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": [
+    {
+      "category": "Components",
+      "display": "Girder",
+      "alias_hint": "Girder",
+      "identity_hint": "MyObjectBuilder_Component/Girder",
+      "build_time_displayed": "0.3s",
+      "ingredients": {
+        "IronIngot": 2
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Large Steel Tube",
+      "alias_hint": "LargeSteelTube",
+      "identity_hint": "MyObjectBuilder_Component/LargeTube",
+      "build_time_displayed": "0.7s ~ 2.2s",
+      "ingredients": {
+        "IronIngot": 4
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Small Steel Tube",
+      "alias_hint": "SmallSteelTube",
+      "identity_hint": "MyObjectBuilder_Component/SmallTube",
+      "build_time_displayed": "0.3s ~ 1.1s",
+      "ingredients": {
+        "IronIngot": 2
+      }
+    }
+  ]
+}

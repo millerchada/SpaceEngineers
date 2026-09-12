@@ -1,0 +1,56 @@
+{
+  "_about": [
+    "LIVE MACHINE ENUMERATION EVIDENCE. One file per production block, never merged.",
+    "Generated from the operator's consolidated IO v1.7.7 handoff, which is AUTHORITATIVE over",
+    "historical or public recipe data wherever they conflict.",
+    "Build times are preserved verbatim as displayed strings, including ranges.",
+    "output_qty is recorded ONLY where the UI showed one (e.g. '10x Lightbulb'); a single",
+    "result icon is not evidence of yield.",
+    "Physical subtype ids are NEVER inferred from display names. identity_hint is null where",
+    "unproven, and identity_confidence records the doubt or the conflict explicitly.",
+    "See machine_evidence/README.md for the full transcription rules."
+  ],
+  "machine": "Ceramics Furnace",
+  "machine_token_in_iopm": "Ceramics Furnace",
+  "mod": "Industrial Overhaul v1.7.7",
+  "enumeration": "COMPLETE",
+  "observed_recipes": 3,
+  "observed_categories": {
+    "Components": 3
+  },
+  "provenance": "operator live UI capture, IO v1.7.7 consolidated handoff, 2026-09-12",
+  "recipes": [
+    {
+      "category": "Components",
+      "display": "Armor Glass",
+      "alias_hint": "ArmorGlass",
+      "identity_hint": "MyObjectBuilder_Component/ArmorGlass",
+      "build_time_displayed": "2.3s",
+      "ingredients": {
+        "AluminumIngot": 3,
+        "PotassiumNitrate": 1
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Ceramic",
+      "alias_hint": "Ceramic",
+      "identity_hint": "MyObjectBuilder_Component/Ceramic",
+      "build_time_displayed": "1.7s",
+      "ingredients": {
+        "SiliconWafer": 3,
+        "Carbon": 2
+      }
+    },
+    {
+      "category": "Components",
+      "display": "Glass",
+      "alias_hint": "Glass",
+      "identity_hint": "MyObjectBuilder_Component/BulletproofGlass",
+      "build_time_displayed": "0.3s",
+      "ingredients": {
+        "SiliconWafer": 3
+      }
+    }
+  ]
+}
