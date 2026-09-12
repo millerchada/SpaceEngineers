@@ -424,7 +424,7 @@ comes back at `0` on the next cycle; set it to a number to give it a floor.
 | `Polymer` | **yes** | Manufactured (`SyntheticPolymer`) despite carrying an Ingot TypeId — designated explicitly |
 | Ingots | no | Refining output. Present only so recipe dependency resolution can price a component in raw material |
 | Ores | no | Refining input, and IOPM does not manage refining |
-| Ammo, tools, food, seeds, loadout-only components | no | Identity only — they resolve in loadouts and never enter base stock accounting |
+| Ammo, tools, food, seeds | no | Identity only — they resolve in loadouts and never enter base stock accounting |
 
 **Recipe availability does not gate the entry.** `Concrete` and `ArmoredPlate`
 are listed even though IOPM cannot yet build them, because *"may I set a target
@@ -432,9 +432,16 @@ for this"* and *"can IOPM make this"* are different questions. Setting a
 non-zero target on an item with no recipe is safe and reports `RawShortage`,
 which correctly reads as "supply this yourself."
 
-To make a loadout-only component stock-configurable, promote it to an ItemDef in
+As of 2.4.28 every live-observed manufactured component is a native ItemDef, so
+`[Stock]` lists all 44 of them. Eight carry no validated recipe yet —
+`ArmoredPlate`, `Canvas`, `Capacitor`, `Concrete`, `Explosives`, `Girder`,
+`RadioCommunication`, `SolarCell` — and are listed anyway.
+
+To make a further item stock-configurable, promote it to an ItemDef in
 `AddItemGroup("MyObjectBuilder_Component", ...)`. Being a loadout alias is
-deliberately not enough — that table also carries ammo and raw materials.
+deliberately not enough — that table also carries ammo and raw materials, so
+membership there says only "this name resolves", never "this is a base
+stockpile item".
 
 ## Configuration
 

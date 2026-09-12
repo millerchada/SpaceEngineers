@@ -28,6 +28,63 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.28
+
+Source 126,765 -> 127,764 (artifact 91,381; 8,619 headroom). Managed recipe set
+37 -> 37, unchanged. Component ItemDefs 38 -> 44.
+
+Six live-observed manufactured component PRODUCTS were still classified as
+loadout-only identities and are now native stock-configurable ItemDefs:
+
+    Capacitor  Explosives  Girder  RadioCommunication  SolarCell  Canvas
+
+They are manufactured products physically observed on the production server, so
+they are exactly as stock-configurable as Concrete and ArmoredPlate - the player
+may want a base floor for any of them. The loadout alias table could never
+confer that status, because it also carries ammo and raw materials; membership
+there says only "this name resolves", never "this is a base stockpile item".
+
+RECIPE-LESS BY DESIGN. No IO 1.7.7 recipe for any of the six is validated, so
+none is in AddRecipes and none can be manufactured. This is the v2.4.27
+principle applied consistently: a [Stock] entry answers "may I set a target for
+this", never "can IOPM build this". A non-zero target on any of them reports
+RawShortage, which correctly reads as supply-this-yourself.
+
+### Live migration: 37 -> 45
+
+Verified by parsing the BUILT ARTIFACT, not the source, so no comment can
+pollute the measurement:
+
+    ADDED (8, all at 0): ArmoredPlate, Canvas, Capacitor, Concrete,
+                         Explosives, Girder, RadioCommunication, SolarCell
+    recipes among added: 0
+    ingot-TypeId items configurable: Polymer only
+    duplicate aliases in the component group: none
+    every other key: untouched
+
+The functional diff against 2.4.27 is two lines - the version constant and the
+component list. Audits: one AddQueueItem call site, no ClearQueue/Remove/Move,
+one ini.Set("Stock") guarded by !present.Contains, 37 recipes.
+
+### The six keep their loadout alias entries
+
+Not removed, deliberately. ResolveLoadoutType checks ItemDefs at priority A,
+before the alias table, so the ItemDef now wins and resolves to the identical
+raw type - the entries are redundant but harmless. They also carry EXTRA alias
+spellings that remain useful (RadioCommComponent, ReactorComponent,
+ThrustComponent, GravityGenComponent, DetectorComponent), and LoadoutTemplate
+de-duplicates by resolved raw type with _items first, so the seeded menu gains
+no duplicate rows.
+
+### Tooling note
+
+A comment placed between two concatenated string literals originally contained
+the quoted phrase "supply this yourself". C# ignores it and build_pb verified
+all 614 literals byte-identical, but naive literal-extraction tooling - my own
+verification script included - concatenated the comment text into the item list
+and reported a phantom alias. The quotes were removed and a warning left in
+place. Verification now reads the artifact, where comments no longer exist.
+
 ## 2.4.27
 
 Source 122,848 -> 126,765 (artifact 91,312; 8,688 headroom). Managed recipe set
