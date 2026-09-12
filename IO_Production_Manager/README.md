@@ -402,6 +402,40 @@ whichever was registered; spell the other out in full
 (`MyObjectBuilder_Ore/Uranium`) — loadout resolution accepts an explicit
 `TypeId/SubtypeId` at priority D.
 
+## `[Stock]` fills itself in (2.4.27+)
+
+Every **stock-configurable** item is written into `[Stock]` automatically with a
+target of `0`, so the whole configurable surface is visible and editable in one
+place with no guessing at spelling.
+
+**Nothing is ever destroyed.** Only absent keys are written. An existing value
+is never overwritten, reordered or deleted — including a deliberate `0`, and
+including a key you wrote under an alias (`Computer=500` correctly marks
+`BasicComputer` as present and does not gain a duplicate row).
+
+A target of `0` means "track it, never manufacture it". Delete a row and it
+comes back at `0` on the next cycle; set it to a number to give it a floor.
+
+### What is stock-configurable, and what is not
+
+| | Auto-listed? | Why |
+|---|---|---|
+| Manufactured components | **yes** | Things you may legitimately want a base floor for |
+| `Polymer` | **yes** | Manufactured (`SyntheticPolymer`) despite carrying an Ingot TypeId — designated explicitly |
+| Ingots | no | Refining output. Present only so recipe dependency resolution can price a component in raw material |
+| Ores | no | Refining input, and IOPM does not manage refining |
+| Ammo, tools, food, seeds, loadout-only components | no | Identity only — they resolve in loadouts and never enter base stock accounting |
+
+**Recipe availability does not gate the entry.** `Concrete` and `ArmoredPlate`
+are listed even though IOPM cannot yet build them, because *"may I set a target
+for this"* and *"can IOPM make this"* are different questions. Setting a
+non-zero target on an item with no recipe is safe and reports `RawShortage`,
+which correctly reads as "supply this yourself."
+
+To make a loadout-only component stock-configurable, promote it to an ItemDef in
+`AddItemGroup("MyObjectBuilder_Component", ...)`. Being a loadout alias is
+deliberately not enough — that table also carries ammo and raw materials.
+
 ## Configuration
 
 All configuration lives in the programmable block's **Custom Data**. Sections

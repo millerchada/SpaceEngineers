@@ -28,6 +28,82 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.27
+
+Source 122,848 -> 126,765 (artifact 91,312; 8,688 headroom). Managed recipe set
+37 -> 37, unchanged.
+
+`[Stock]` auto-population is now driven by STOCK-CONFIGURABLE IDENTITY instead
+of recipe availability.
+
+### The defect
+
+`EnsureStockAliasesPresent` iterated `_recipes`:
+
+    foreach (var kv in _recipes)
+      if (!present.Contains(kv.Key)) ini.Set("Stock", kv.Key, 0);
+
+So a configuration entry appeared only once IOPM had learned to BUILD the item.
+That conflates two independent facts. "May the player set a target for this?"
+and "can IOPM manufacture this?" are different questions, and answering the
+first with the second hid Concrete and ArmoredPlate - real components, live
+observed on the base in the v2.4.26 dump - from the configuration purely
+because their IO 1.7.7 recipes are not validated.
+
+### The rule
+
+`ItemDef` gains `StockConfigurable`, an EXPLICIT designation:
+
+- manufactured components -> stock-configurable, auto-listed at 0
+- ingots -> NOT stock-configurable. They are refining output, present only so
+  recipe dependency resolution can price a component in raw material.
+  Auto-listing them would invite [Stock] targets for materials IOPM must not
+  manage; refining is out of scope by design.
+- loadout-only identities (ammo, ores, tools, food, and components carrying
+  identity but no ItemDef - Capacitor, Girder, SolarCell, Explosives, Canvas,
+  RadioCommunication) are excluded automatically by not being ItemDefs at all.
+
+Effect on the live base: `[Stock]` 37 -> 39. `ArmoredPlate=0` and `Concrete=0`
+added, nothing else written.
+
+### Polymer: why the designation is per-item, not per-TypeId
+
+Caught before shipping. Polymer is MANUFACTURED - blueprint `SyntheticPolymer`,
+one of the 37 managed recipes - but IO 1.7.7 gives it an INGOT TypeId, so it
+lives in the ingot ItemDef group. A TypeId-group rule alone would have silently
+stopped auto-listing it. The live base would not have noticed, because the pass
+never deletes and `Polymer=500` was already there, but a FRESH deployment would
+have lost the entry.
+
+`MarkStockConfigurable("Polymer")` designates it explicitly, which keeps the
+designation independent of recipe availability - the whole point of this
+version. A rule of "component group OR has a recipe" was rejected for exactly
+that reason: it would have made recipes control existence again through the
+back door.
+
+### Non-destructive guarantees
+
+- Only ABSENT keys are written. An existing user value is never read,
+  overwritten, reordered or deleted - including a deliberate 0.
+- Presence is tested through `Canon`, so a key written under an alias
+  (`Computer=500`) correctly marks its canonical item (BasicComputer) present
+  and does not gain a duplicate row.
+- The pass runs inside `WriteDiagnostics`, which already rewrites Custom Data
+  and then re-reads it into `_lastCustomDataSeen`, so added keys cannot
+  self-trigger the config-change detector. The next cycle finds them present
+  and writes nothing: idempotent, settles in one cycle.
+- `DeleteSection` still touches `IOPM.*` only. Verified by audit: the single
+  `ini.Set("Stock", ...)` in the file is guarded by `!present.Contains`.
+
+### A [Stock] target on a recipe-less item is safe
+
+Verified against `EnsureFeasible`. At target 0 the shortage is <= 0 and the row
+reports `Satisfied`, queuing nothing. At a non-zero target it reports
+`RawShortage` with `BlockedBy` set to itself, which correctly says "supply this
+yourself" rather than pretending the item does not exist. No crash, no bogus
+queueing, no unknown-blueprint warning, because the recipe lookup is reached
+only when a shortage exists.
+
 ## 2.4.26
 
 Source 120,051 -> 122,848 (artifact 90,807; 9,193 headroom). Managed recipe set
