@@ -444,12 +444,18 @@ including a key you wrote under an alias (`Computer=500` correctly marks
 A target of `0` means "track it, never manufacture it". Delete a row and it
 comes back at `0` on the next cycle; set it to a number to give it a floor.
 
-`[Stock]` is kept sorted alphabetically by canonical alias (2.4.31+). Your
-values are preserved as raw text — `0.5` stays `0.5` — and keys IOPM does not
-recognise are sorted into place rather than dropped, so you can track your own
-items there safely. A key you write under an alias (`Computer=500`) keeps that
-spelling and sorts beside its canonical sibling (`BasicComputer`), which reads
-slightly oddly but never rewrites what you typed.
+`[Stock]` is kept sorted alphabetically and spelled canonically (2.4.31+, with
+re-spelling added in 2.4.32). Write `Computer=500` and it becomes
+`BasicComputer=500` — the name is normalised, the value is carried across as
+raw text (`0.5` stays `0.5`). Keys IOPM does not recognise are left exactly as
+you wrote them and sorted into place rather than dropped, so you can track your
+own items there safely.
+
+**If two keys mean the same item** — say `Computer=500` and
+`BasicComputer=1000` — IOPM will **not** merge them, because that would throw
+away one of your numbers. Both are kept exactly as written and the conflict is
+reported under `[IOPM.ConfigError.*]`. Delete whichever you do not want; until
+you do, load order decides which value applies.
 
 Everything in `[Stock]` appears on the `[IOPM-Stock]` LCD (2.4.29+), including
 items IOPM cannot manufacture and keys you added by hand. `[IOPM.StockDisplay]

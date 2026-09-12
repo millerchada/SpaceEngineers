@@ -28,6 +28,85 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.32
+
+Source 133,535 -> 137,328 (artifact 94,256; **5,744 headroom** - see the note at
+the end). Recipes 38 -> 38, ItemDefs unchanged, seeding unchanged.
+
+`[Stock]` keys are now RE-SPELLED to their canonical alias, not merely sorted as
+if they were. `Computer=500` is rewritten as `BasicComputer=500`, carrying the
+value across as raw text. v2.4.31 sorted an alias key under its canonical name
+but left the spelling alone, which made the section read as though it were
+mis-sorted; the invariant is now actually true rather than approximately true.
+
+### Collisions are detected, never resolved
+
+Two keys can mean the same item - `Computer=500` alongside `BasicComputer=1000`.
+Re-spelling both would collapse them and silently destroy one player-entered
+number. So a COLLIDING GROUP IS NEVER RENAMED: every key in it is emitted
+verbatim, and the conflict is reported through `[IOPM.ConfigError.*]`:
+
+    [Stock] alias collision on BasicComputer: BasicComputer, Computer all mean
+    BasicComputer. All kept verbatim and NONE renamed - delete whichever you do
+    not want. Until then the config load order decides which value wins.
+
+The player decides which to keep, because only the player knows which number
+they meant. Seeding cannot create a collision - it adds a key only when nothing
+already canonicalizes to it - so this fires solely on hand-edited config.
+
+`DetectStockCollisions` runs immediately after seeding and before the `IOPM.*`
+sections are written, so a collision reaches the diagnostics in the same cycle
+it is found.
+
+### A message that churned, caught by the test
+
+The first implementation named the colliding keys in DISCOVERY order. Because
+this same pass reorders the section, the message read "Computer and
+BasicComputer" on the cycle that found the collision and "BasicComputer and
+Computer" on the next - the `[Stock]` section was byte-stable, but the
+diagnostic wobbled for one extra cycle. `tests_canonicalize_stock.py` caught it
+("collision still reported next cycle" FAILED). Fixed by gathering full groups
+and sorting both the group names and the names within each group, making the
+message a pure function of the key SET rather than of its order.
+
+### Verified
+
+`tests_canonicalize_stock.py` is committed alongside the source, with
+`live_custom_data.txt` as its fixture, and ports `DetectStockCollisions` and
+`CanonicalizeStock` line for line. 32 checks, all passing:
+
+    LIVE CONFIG (45 canonical keys)
+      idempotent over 3 passes, no collisions, 45 -> 45, no key lost,
+      no value changed, ZERO VISIBLE DIFF against v2.4.31 ordering,
+      [General] [Sorting] [Production] [Display] untouched
+    RE-SPELLING
+      Computer -> BasicComputer, value 500 carried across, sorted correctly,
+      idempotent, no collision reported for a single key
+    COLLISION
+      both keys survive, neither renamed, nothing lost, reported once,
+      message identical on the following cycle, idempotent
+    UNKNOWN KEYS / FIDELITY / LINE ENDINGS
+      unknown keys survive un-renamed and interleave alphabetically,
+      0.5 and 1e3 preserved verbatim, CRLF stays CRLF, LF stays LF
+    STRUCTURAL
+      sparse one-key section seeds to 45 and is idempotent,
+      [Stock] as the final section is idempotent
+
+As predicted, the change is a NO-OP on the current base: the live 45 keys are
+already canonical, so today it only makes the invariant correct for future
+hand edits.
+
+### PB headroom is trending down and needs watching
+
+    2.4.29  8,669      2.4.31  7,191
+    2.4.30  8,610      2.4.32  5,744
+
+Roughly 2,900 characters consumed across two versions. The artifact is 94,256
+of the PB's 100,000. This is not urgent, but the next few features cannot all
+be additive. When it gets tight the cheapest real saving is the knowledge-only
+blueprint table, which costs ~1,100 characters and earns its place only when a
+pending recipe is promoted.
+
 ## 2.4.31
 
 Source 129,718 -> 133,535 (artifact 92,809; 7,191 headroom). Recipes 38 -> 38,
