@@ -29,7 +29,10 @@ SAFETY: this transform is only valid because the source contains no verbatim
 assert that, and verify every string literal survives byte-identical. If a check
 fails the artifact is NOT written.
 """
+import subprocess
 import sys
+
+import minify_names
 import os
 
 
@@ -131,6 +134,15 @@ def main():
 
     out, src_lits, src_struct = scan(src)
 
+    # --- identifier shortening -------------------------------------------------
+    # Renames only OUR private fields and method names, never a dotted member and never
+    # anything inside a string literal. minify_names verifies the transform is a bijection by
+    # applying the inverse mapping and requiring the original back byte for byte; the literal
+    # and structure checks below then re-verify against the ORIGINAL source, and check_pb.py
+    # compiles the result. See minify_names.py for why each exclusion exists.
+    renamed, mapping, mreport = minify_names.minify(out)
+    out = renamed
+
     # --- verification: refuse to write a suspect artifact ---------------------
     problems = []
 
@@ -158,6 +170,8 @@ def main():
           % (len(out), len(src) - len(out), 100.0 * (len(src) - len(out)) / len(src)))
     print('string literals preserved: %d' % len(out_lits))
     print('code structure: ' + '  '.join('%s=%d' % (c, src_struct[c]) for c in STRUCTURAL))
+    print('identifiers shortened: %d fields + %d methods, saved %d chars'
+          % (mreport['fields'], mreport['methods'], mreport['saved']))
     print('PB ceiling headroom: %d chars' % (100000 - len(out)))
 
     if problems:
@@ -170,6 +184,26 @@ def main():
     dst = base + '.min' + ext
     with open(dst, 'w') as f:
         f.write(out)
+
+    # --- COMPILE GATE ----------------------------------------------------------
+    # The ARTIFACT is what gets pasted, so the artifact is what must compile - not merely the
+    # source it came from. This also catches a bad rename, which is exactly how the QueueLoad /
+    # ServiceLoadouts collision in minify_names was found. Without this the transform would be
+    # "verified" only in the sense that brace counts matched, which is the weaker claim that
+    # let two compile errors reach the game.
+    here = os.path.dirname(os.path.abspath(__file__))
+    check = os.path.join(here, 'check_pb.py')
+    if os.path.exists(check):
+        r = subprocess.run([sys.executable, check, dst], capture_output=True, text=True)
+        if r.returncode != 0:
+            os.remove(dst)
+            print('\nFAILED - artifact did NOT compile; it has been deleted:')
+            print(r.stdout + r.stderr)
+            return 1
+        print('compile gate: artifact compiles clean')
+    else:
+        print('WARNING: check_pb.py not found - artifact NOT compile-checked')
+
     print('\nverification passed -> %s' % dst)
     if len(out) >= 100000:
         print('WARNING: artifact still exceeds the 100,000-character PB ceiling')

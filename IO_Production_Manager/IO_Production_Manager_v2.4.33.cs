@@ -1893,7 +1893,19 @@ void BuildKnowledgeBase() {
   AddItemGroup("MyObjectBuilder_Ingot", "Polymer,IronIngot=Iron,NickelIngot=Nickel,CobaltIngot=Cobalt,CopperIngot=Copper,GoldIngot=Gold,AluminumIngot=Aluminum,TitaniumIngot=Titanium,SilverIngot=Silver,SiliconWafer=Silicon,Carbon,Sulfur,LithiumPaste=Lithium,TantalumIngot=Tantalum,PlatinumIngot=Platinum,PotassiumNitrate=Niter", false);
   AddAliasGroup("ConstructionComp=Construction,ConstructionComponent=Construction,LargeTube=LargeSteelTube,SmallTube=SmallSteelTube,Computer=BasicComputer,Medical=MedicalComponent,PowerCell=LithiumPowerCell,InteriorPlate=AluminumPlate,Detector=SensorCluster,BulletproofGlass=Glass,SiliconIngot=SiliconWafer,CarbonIngot=Carbon,SulfurIngot=Sulfur,LithiumIngot=LithiumPaste,PolymerIngot=Polymer");
   AddBlueprintGroup("Electromagnet=Electromagnet,CopperWire=CopperWire,Motor=POMotorComponent,HeatingElement=HeatingElement,SteelPlate=POSteelPlate,SmallSteelTube=POSmallTube,AdvancedComputer=AdvancedComputer,Plastic=PolymerToPlastic,Construction=POConstructionComponent,LargeSteelTube=POLargeTube,BasicComputer=POComputerComponent,Rubber=Rubber,TitaniumPlate=TitaniumPlate,Ceramic=Ceramic,Polymer=SyntheticPolymer,Lightbulb=Lightbulb,Display=PODisplay,MedicalComponent=POMedicalComponent,Thermocouple=Thermocouple,LithiumPowerCell=POPowerCell,GoldWire=GoldWire,AluminumPlate=POInteriorPlate,Glass=POBulletproofGlass,MetalGrid=POMetalGrid,SensorCluster=PODetectorComponent");
-  // KNOWLEDGE ONLY - no Recipe and no ItemDef, so never planned, queued or put in [Stock].
+  // WAS "knowledge only". THAT LABEL IS FALSE AS OF v2.4.30 - 20 of these 25 entries are
+  // load-bearing, and the table must not be deleted to save characters. Audited v2.4.33:
+  //   13 are consumed via TryGetBlueprint() in EnsureFeasible/ApplyPlan because they gained
+  //      recipes in v2.4.16, v2.4.17 and v2.4.30 - ArmorGlass, ArmoredPlate, Cryocooler,
+  //      ElectronMatrix, FSSolarCell, GravityGenerator, LaserEmitter, QuantumComputer,
+  //      Reactor, SuperMagnet, Superconductor, Thrust, TokamakBlanket.
+  //    7 are consumed via BlueprintReverseMap(), which iterates _items (ALL ItemDefs, not
+  //      just recipes) and lets ScanQueues attribute a MANUALLY queued job to an alias -
+  //      Canvas, Capacitor, Concrete, Explosives, Girder, RadioCommunication, SolarCell.
+  //      Deleting these would silently stop IOPM recognising a hand-queued one.
+  //    5 are genuinely unreachable - AcidPowerCell, AlkalinePowerCell, Asphalt,
+  //      CompositeArmor, Fabric - worth 123 characters, kept because they are the blueprint
+  //      ids a future promotion needs, exactly as ArmoredPlate's was in v2.4.30.
   AddBlueprintGroup("Girder=POGirderComponent,RadioCommunication=PORadioCommunicationComponent,Reactor=POReactorComponent,SolarCell=POSolarCell,Superconductor=POSuperconductor,Thrust=POThrustComponent,GravityGenerator=POGravityGeneratorComponent,Explosives=POExplosivesComponent,Canvas=POCanvas,AcidPowerCell=AcidPowerCell,AlkalinePowerCell=AlkalinePowerCell,ArmorGlass=ArmorGlass,ArmoredPlate=ArmoredPlate,Asphalt=Asphalt,Capacitor=Capacitor,CompositeArmor=CompositeArmor,Concrete=Concrete,Cryocooler=Cryocooler,ElectronMatrix=ElectronMatrix,FSSolarCell=FSSolarCell,Fabric=Fabric,LaserEmitter=LaserEmitter,QuantumComputer=QuantumComputer,SuperMagnet=SuperMagnet,TokamakBlanket=TokamakBlanket");
   // LOADOUT-ONLY IDENTITY TABLE - deliberately NOT an item database. GOAT names for vanilla ammo
   // plus vanilla components IOPM knows but does not make; each entry self-registers its bare

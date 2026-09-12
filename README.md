@@ -51,7 +51,23 @@ working in-game, the version it replaced moves to that folder's `archive/` with
 Generated `*.min.cs` artifacts are gitignored: they rebuild byte-for-byte from
 the source plus the committed `build_pb.py`.
 
-## Before deploying: compile-check, then build
+## Before deploying: run the release gate
+
+    python tests/run_release_gate.py IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs
+
+This is the required step. It proves the checker still detects the two compile
+errors that historically reached the game (negative controls), then checks and
+builds the script under release. `build_pb.py` also compile-checks the artifact
+itself and DELETES it rather than leaving a broken file on disk.
+
+The artifact is minified: `minify_names.py` shortens our own private fields and
+method names, never a dotted member and never anything inside a string literal.
+It proves the transform is a bijection by applying the inverse mapping and
+requiring the original back byte for byte. Readable names live in the Git
+source. Newlines are deliberately kept so in-game runtime errors still carry
+usable line numbers.
+
+## The individual tools
 
     python check_pb.py IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs
     python build_pb.py IO_Production_Manager/IO_Production_Manager_vX.Y.Z.cs

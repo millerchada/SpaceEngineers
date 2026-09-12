@@ -28,6 +28,93 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## Size-reclamation pass (no version bump - behaviour is byte-identical)
+
+    artifact 94,878 -> 86,287     headroom 5,122 -> 13,713
+
+Target was <= 90,000, preferably <= 88,000. Reached without touching one line of
+planner, sorting, docking or queue logic - no expression rewritten, no branch
+merged, nothing inlined, no diagnostic string shortened.
+
+### Where the characters actually were
+
+Measured rather than guessed:
+
+    identifiers   44,648 chars (47.1%)
+    string data   14,097 chars (14.9%)
+    newlines       2,226 chars
+
+Most identifier cost is framework names (Dictionary, List, IMyInventory) that
+cannot be renamed. What we own - private fields and our own method names - was
+worth ~10,000.
+
+### minify_names.py
+
+Renames only our own private fields and method names in the ARTIFACT. Readable
+names stay in the Git source, which is the only place anyone reads them.
+
+Excluded, each for a reason:
+  - anything ever reached through a dot. Our method `Get` and MyIni's `ini.Get`
+    share a name; a bare-token rename would rewrite the API call.
+  - anything inside a string literal. Item aliases, [Stock] keys, GOAT tokens
+    and diagnostics text are DATA - rewriting one changes behaviour.
+  - locals, which are the riskiest (shadowing can rebind rather than error) and
+    the least valuable.
+
+Verified three ways: the INVERSE mapping must reproduce the original byte for
+byte (proving the transform is a bijection over tokens that touched nothing
+else); build_pb re-verifies all 635 string literals and the code-structure
+counts against the ORIGINAL source; and check_pb compiles the artifact.
+
+NEWLINES WERE DELIBERATELY KEPT. Removing them would save 2,226 more characters
+but destroy in-game line numbers for runtime errors, and renaming alone already
+cleared the target with room to spare. Compile errors are caught locally now,
+but runtime ones still surface in the game.
+
+THE COMPILER CAUGHT THE PASS GETTING IT WRONG, which is the whole argument for
+the gate: `QueueLoad` and `ServiceLoadouts` are each BOTH one of our method
+names AND a field on a class. The dotted uses were correctly skipped but the
+bare declarations were renamed, desyncing them (CS1061/CS1660). Fixed by
+excluding any name that is ever dotted anywhere in the file.
+
+### The knowledge-only blueprint table: proven NOT removable
+
+The obvious saving was the 691-character table commented "KNOWLEDGE ONLY - no
+Recipe and no ItemDef, so never planned, queued or put in [Stock]". THE COMMENT
+IS FALSE, and deleting on the strength of it would have broken production.
+Audit of all 25 entries:
+
+    13  live via TryGetBlueprint() in EnsureFeasible/ApplyPlan - they gained
+        recipes in v2.4.16, v2.4.17 and v2.4.30 and the label was never updated
+     7  live via BlueprintReverseMap(), which iterates _items - ALL ItemDefs,
+        not just recipes - so ScanQueues can attribute a MANUALLY queued job to
+        an alias. Deleting these would silently stop IOPM recognising a
+        hand-queued Girder, Capacitor, Concrete, Explosives, Canvas,
+        RadioCommunication or SolarCell.
+     5  genuinely unreachable: AcidPowerCell, AlkalinePowerCell, Asphalt,
+        CompositeArmor, Fabric - worth 123 characters.
+
+KEPT, including the five. 123 characters against 13,713 headroom is not worth a
+change, and they are the blueprint ids a future promotion needs - exactly as
+ArmoredPlate's was in v2.4.30, when it was still sitting in this "unused" table.
+The comment has been replaced with the audit.
+
+This is why the instruction was to prove before removing. The label was three
+versions stale and pointed at the opposite of the truth.
+
+### Release gate
+
+`python tests/run_release_gate.py <source.cs>` is now required before any paste,
+and `build_pb.py` refuses to emit an artifact that does not compile - deleting
+it rather than leaving a broken file on disk. The gate runs two NEGATIVE
+CONTROLS first, because a checker that has silently stopped working is worse
+than none:
+
+    pre-fix v2.4.33 (shadowed local) -> CS0136 reported   PASS
+    v2.4.3 Comparison<T>             -> whitelist screen  PASS
+    script under release             -> compiles clean    PASS
+    build_pb transform verification                       PASS
+
 ## 2.4.33 — in-game compile fix, and a local compile checker
 
 The first paste of v2.4.33 failed to compile in game:
