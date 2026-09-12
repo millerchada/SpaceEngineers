@@ -1,0 +1,151 @@
+# Item Identity Dump - live capture, IO v1.7.7, 2026-09-12
+# Blocks=190 Inventories=236 DistinctItems=120
+#
+# Captured with IO_Item_Identity_Dump on a scratch PB. Verbatim; nothing edited.
+#
+# WHAT THIS CAPTURE SETTLES
+#   Ingot/Niter = 62,016.97      confirms PotassiumNitrate -> MyObjectBuilder_Ingot/Niter,
+#                                which the repo already carried. CONFIRMATION, not a new
+#                                identity, and not inferred from the display name.
+#   Ingot/Magnesium = 196,894.34 confirms Gunpowder's identity, as already recorded.
+#
+# IDENTITIES THIS CAPTURE NEWLY RESOLVES (recorded here; catalog NOT expanded in v2.4.38)
+#   GasContainerObject/HydrogenBottle      Hydrogen Bottle
+#   OxygenContainerObject/OxygenBottle     Oxygen Bottle
+#   ConsumableItem/MealPack_KelpCrisp      Meal Pack (Kelp Crisp)
+#   ConsumableItem/MealPack_Spaghetti      Meal Pack (Spaghetti)
+#   ConsumableItem/MealPack_VeggieBurger   Meal Pack (Veggie Burger)
+#   AmmoMagazine/MediumCalibreAmmo AND MediumCalibreAmmoHE both physically present,
+#     which confirms the assault-cannon AP/HE variants are two distinct subtypes -
+#     but NOT which display name maps to which. Still unresolved.
+#
+# STILL UNRESOLVED AFTER THIS CAPTURE
+#   No Component/AcidPowerCell, AlkalinePowerCell, Asphalt or CompositePlate appears,
+#   so those four remain identity-unknown - they are simply not present on the base.
+#
+# TOOL TIERS - DELIBERATELY NOT RESOLVED
+#   PhysicalGunObject shows AngleGrinderItem / 2 / 3 / 4, HandDrillItem / 2 / 3 / 4 and
+#   WelderItem / 2 / 3 / 4. The tier ordering Grinder -> Enhanced -> Proficient -> Elite
+#   is SUGGESTIVE of a 1:1 mapping and is NOT proof. Mapping them by numeric suffix would
+#   be exactly the display-name inference this project forbids. Left unresolved.
+
+MyObjectBuilder_AmmoMagazine/AutocannonClip=21
+MyObjectBuilder_AmmoMagazine/AutomaticRifleGun_Mag_20rd=19
+MyObjectBuilder_AmmoMagazine/ElitePistolMagazine=3
+MyObjectBuilder_AmmoMagazine/FlareClip=2
+MyObjectBuilder_AmmoMagazine/FullAutoPistolMagazine=15
+MyObjectBuilder_AmmoMagazine/InteriorTurret_Mag_50rd=958
+MyObjectBuilder_AmmoMagazine/LargeCalibreAmmo=30
+MyObjectBuilder_AmmoMagazine/LargeRailgunAmmo=14
+MyObjectBuilder_AmmoMagazine/MediumCalibreAmmo=2202
+MyObjectBuilder_AmmoMagazine/MediumCalibreAmmoHE=200
+MyObjectBuilder_AmmoMagazine/Missile200mm=115
+MyObjectBuilder_AmmoMagazine/NATO_25x184mm=1176
+MyObjectBuilder_AmmoMagazine/RapidFireAutomaticRifleGun_Mag_50rd=53
+MyObjectBuilder_AmmoMagazine/UltimateAutomaticRifleGun_Mag_30rd=16
+MyObjectBuilder_Component/AdvancedComputer=1000
+MyObjectBuilder_Component/ArmoredPlate=20000
+MyObjectBuilder_Component/ArmorGlass=8
+MyObjectBuilder_Component/BulletproofGlass=128746
+MyObjectBuilder_Component/Canvas=25
+MyObjectBuilder_Component/Capacitor=50
+MyObjectBuilder_Component/Ceramic=719
+MyObjectBuilder_Component/Computer=2012
+MyObjectBuilder_Component/Concrete=100000
+MyObjectBuilder_Component/Construction=10060
+MyObjectBuilder_Component/CopperWire=10031
+MyObjectBuilder_Component/Cryocooler=19
+MyObjectBuilder_Component/Detector=500
+MyObjectBuilder_Component/Display=512
+MyObjectBuilder_Component/Electromagnet=5000
+MyObjectBuilder_Component/ElectronMatrix=1
+MyObjectBuilder_Component/Explosives=10
+MyObjectBuilder_Component/Fabric=1
+MyObjectBuilder_Component/FSSolarCell=1
+MyObjectBuilder_Component/Girder=2000
+MyObjectBuilder_Component/GoldWire=10030
+MyObjectBuilder_Component/GravityGenerator=602
+MyObjectBuilder_Component/HeatingElement=555
+MyObjectBuilder_Component/InteriorPlate=5040
+MyObjectBuilder_Component/LargeTube=3002
+MyObjectBuilder_Component/Lightbulb=549
+MyObjectBuilder_Component/Medical=100
+MyObjectBuilder_Component/MetalGrid=9156
+MyObjectBuilder_Component/Motor=2010
+MyObjectBuilder_Component/Plastic=518
+MyObjectBuilder_Component/PowerCell=514
+MyObjectBuilder_Component/QuantumComputer=200
+MyObjectBuilder_Component/RadioCommunication=200
+MyObjectBuilder_Component/Reactor=78
+MyObjectBuilder_Component/Rubber=506
+MyObjectBuilder_Component/SmallTube=5020
+MyObjectBuilder_Component/SolarCell=250
+MyObjectBuilder_Component/SteelPlate=20039
+MyObjectBuilder_Component/Superconductor=1000
+MyObjectBuilder_Component/SuperMagnet=1
+MyObjectBuilder_Component/Thermocouple=291
+MyObjectBuilder_Component/Thrust=706
+MyObjectBuilder_Component/TitaniumPlate=2002
+MyObjectBuilder_Component/TokamakBlanket=1
+MyObjectBuilder_ConsumableItem/DrillInhibitorBlocker=20
+MyObjectBuilder_ConsumableItem/JetpackInhibitorBlocker=28
+MyObjectBuilder_ConsumableItem/MealPack_ExpiredSlop=2
+MyObjectBuilder_ConsumableItem/MealPack_KelpCrisp=2059
+MyObjectBuilder_ConsumableItem/MealPack_Spaghetti=765
+MyObjectBuilder_ConsumableItem/MealPack_VeggieBurger=17
+MyObjectBuilder_ConsumableItem/Medkit=30
+MyObjectBuilder_ConsumableItem/PlayerInhibitorBlocker=19
+MyObjectBuilder_ConsumableItem/Powerkit=55
+MyObjectBuilder_ConsumableItem/RadiationKit=10
+MyObjectBuilder_Datapad/Datapad=1
+MyObjectBuilder_GasContainerObject/HydrogenBottle=29
+MyObjectBuilder_Ingot/Aluminum=6455251.21
+MyObjectBuilder_Ingot/Carbon=246468.17
+MyObjectBuilder_Ingot/Cobalt=14785.1
+MyObjectBuilder_Ingot/Copper=2148426.1
+MyObjectBuilder_Ingot/DepletedUranium=317887.19
+MyObjectBuilder_Ingot/FuelOil=415395.66
+MyObjectBuilder_Ingot/Gold=57718.36
+MyObjectBuilder_Ingot/Iron=2175258.48
+MyObjectBuilder_Ingot/Lithium=169.67
+MyObjectBuilder_Ingot/Magnesium=196894.34
+MyObjectBuilder_Ingot/Nickel=1222597.22
+MyObjectBuilder_Ingot/Niter=62016.97
+MyObjectBuilder_Ingot/Platinum=100255.6
+MyObjectBuilder_Ingot/Polymer=175159.18
+MyObjectBuilder_Ingot/PrototechScrap=1.24
+MyObjectBuilder_Ingot/Silicon=2220131.82
+MyObjectBuilder_Ingot/Silver=96589.54
+MyObjectBuilder_Ingot/SpentFuel=31.11
+MyObjectBuilder_Ingot/Stone=229945.04
+MyObjectBuilder_Ingot/Sulfur=261252.17
+MyObjectBuilder_Ingot/Tantalum=15274.96
+MyObjectBuilder_Ingot/Titanium=270275.17
+MyObjectBuilder_Ingot/Uranium=79645.03
+MyObjectBuilder_Ore/Bauxite=25569751.91
+MyObjectBuilder_Ore/CrushedSilver=121924.93
+MyObjectBuilder_Ore/Ice=1534288.55
+MyObjectBuilder_Ore/PurifiedSilver=72
+MyObjectBuilder_Ore/Silver=214633.71
+MyObjectBuilder_OxygenContainerObject/OxygenBottle=4
+MyObjectBuilder_PhysicalGunObject/AdvancedHandHeldLauncherItem=3
+MyObjectBuilder_PhysicalGunObject/AngleGrinder2Item=3
+MyObjectBuilder_PhysicalGunObject/AngleGrinder3Item=18
+MyObjectBuilder_PhysicalGunObject/AngleGrinder4Item=8
+MyObjectBuilder_PhysicalGunObject/AngleGrinderItem=18
+MyObjectBuilder_PhysicalGunObject/AutomaticRifleItem=2
+MyObjectBuilder_PhysicalGunObject/ElitePistolItem=3
+MyObjectBuilder_PhysicalGunObject/FlareGunItem=2
+MyObjectBuilder_PhysicalGunObject/FullAutoPistolItem=2
+MyObjectBuilder_PhysicalGunObject/HandDrill2Item=3
+MyObjectBuilder_PhysicalGunObject/HandDrill3Item=3
+MyObjectBuilder_PhysicalGunObject/HandDrill4Item=8
+MyObjectBuilder_PhysicalGunObject/HandDrillItem=18
+MyObjectBuilder_PhysicalGunObject/RapidFireAutomaticRifleItem=2
+MyObjectBuilder_PhysicalGunObject/UltimateAutomaticRifleItem=6
+MyObjectBuilder_PhysicalGunObject/Welder2Item=5
+MyObjectBuilder_PhysicalGunObject/Welder3Item=11
+MyObjectBuilder_PhysicalGunObject/Welder4Item=10
+MyObjectBuilder_PhysicalGunObject/WelderItem=18
+MyObjectBuilder_PhysicalObject/SpaceCredit=13770
+MyObjectBuilder_SeedItem/Fruit=3

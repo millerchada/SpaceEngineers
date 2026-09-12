@@ -28,6 +28,86 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.38 — Gunpowder output yield is 10, not 1
+
+Artifact 86,803; headroom 13,197. Recipes 47, unchanged. **Gunpowder is still
+NOT operational** and deliberately so - see gate 2 below.
+
+One manual blueprint execution in the Munitions Factory placed **10 Gunpowder**
+in the machine output. v2.4.37 shipped yield 1 because the UI displays no yield
+for this recipe.
+
+    Gunpowder | 10 | Munitions Factory | PotassiumNitrate:6, Carbon:2, Sulfur:2
+
+### An absent yield means UNKNOWN, never 1
+
+Defaulting to 1 is a guess, and it fails expensively. `EnsureFeasible` computes
+`jobsWanted = ceil(shortage / recipeOutput)`, so a demand for 10 Gunpowder:
+
+    yield 10 (correct)   1 job    reserves  6 /  2 /  2
+    yield 1  (v2.4.37)  10 jobs   reserves 60 / 20 / 20
+
+and the planner would BELIEVE it was making 10 while the game actually made 100.
+The damage is the gap between prediction and reality - ten times the ingredients
+consumed, ten times the goods produced - with the planner's own arithmetic
+staying perfectly self-consistent throughout. Nothing in any existing audit
+could have caught it; only counting the output of one real job could.
+
+This is the second measured non-unity yield after `Lightbulb|10`, and the
+harder one: Lightbulb at least announces itself as "10x Lightbulb" in the
+blueprint name. Gunpowder announces nothing.
+
+### The four gates
+
+    1. OutputYield corrected to 10          DONE
+    2. Exact Gunpowder BlueprintId captured  NOT DONE - blocked on live capture
+    3. PotassiumNitrate / Niter reconciled   DONE - already correct, now confirmed
+    4. Planner yield math proven by tests    DONE - tests/tests_yield_math.py
+
+Gate 2 is the operational gate and it is not met. No blueprint id was invented.
+The recipe reports `Action=UnknownBlueprint`, which is a loud designed
+diagnostic rather than a silent stall, and `[BlueprintOverrides] Gunpowder=<id>`
+closes it with no code change once the id exists.
+
+### Gate 3 - reconciled, not newly discovered
+
+`PotassiumNitrate -> MyObjectBuilder_Ingot/Niter` was ALREADY in the ItemDef
+table and has been since the original catalog. The fresh dump showing
+`Ingot/Niter=62,016.97` alongside `Ingot/Magnesium=196,894.34` CONFIRMS it. The
+display name "Potassium Nitrate" played no part in the reconciliation - it was
+checked against the repo, which already held the mapping.
+
+### Gate 4 - tests/tests_yield_math.py
+
+Models `EnsureFeasible`'s job arithmetic and `ScanQueues`' credit path. Asserts
+the one-job/6-2-2 claim, a regression control proving the same demand under
+yield 1 behaves differently (so the test can actually detect the bug), rounding
+behaviour, queue credit, that `Lightbulb|10` does not regress, and that unity
+yields are untouched - including SolarCell 47 -> IronIngot 141, matching the
+v2.4.37 live UAT exactly.
+
+The test caught an error in its own first draft: it asserted the wrong yield
+"would produce 100" against the PLANNER's number, which is 10. Planner-believed
+output and actual game output are different layers, and conflating them is
+precisely the confusion that makes a wrong yield hard to see. Both are now
+asserted separately.
+
+### Evidence recorded
+
+`uat/v2.4.38/gunpowder-yield.txt` - the measurement and its method.
+`uat/v2.4.38/item-identity-dump.txt` - the full 120-item live dump, verbatim.
+
+The dump also newly resolves `GasContainerObject/HydrogenBottle`,
+`OxygenContainerObject/OxygenBottle` and three MealPack subtypes, and shows both
+`MediumCalibreAmmo` and `MediumCalibreAmmoHE` physically present - confirming
+the assault-cannon AP/HE variants are two distinct subtypes without proving
+which display name maps to which. Recorded, catalog NOT expanded here.
+
+Tool tiers were deliberately left unresolved. `AngleGrinderItem / 2 / 3 / 4`,
+`HandDrillItem / 2 / 3 / 4` and `WelderItem / 2 / 3 / 4` are suggestive of the
+Grinder -> Enhanced -> Proficient -> Elite ladder, but mapping by numeric suffix
+is display-name inference wearing a different hat.
+
 ## v2.4.37 UAT — SolarCell correction PASS
 
 Recorded under `uat/v2.4.37/`. Two captures, because a converged end state alone

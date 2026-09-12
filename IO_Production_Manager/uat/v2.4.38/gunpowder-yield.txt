@@ -1,0 +1,25 @@
+# v2.4.38 UAT EVIDENCE - Gunpowder output yield
+#
+# METHOD
+#   One Gunpowder blueprint execution queued BY HAND in the Munitions Factory.
+#   Run completed; machine output inspected.
+#
+# RESULT
+#   10 Gunpowder placed in the machine output from ONE blueprint execution.
+#
+#   => OutputYield = 10
+#      BuildTime   = 0.8s
+#      Inputs      = PotassiumNitrate 6, Carbon 2, Sulfur 2
+#
+# WHY THIS MATTERS
+#   The Munitions Factory UI displays NO yield for this recipe. v2.4.37 therefore
+#   assumed 1. Absence of a displayed yield is not evidence of yield 1 - it is
+#   absence of evidence, and the only way to settle it is to run one job and count.
+#
+#   This is the SECOND measured non-unity yield in the catalog. The first,
+#   Lightbulb|10, at least displayed "10x Lightbulb" in its blueprint name.
+#   Gunpowder displays nothing, so it could only be found by measurement.
+#
+# NOT YET SATISFIED - Gunpowder remains NON-OPERATIONAL
+#   The blueprint subtype id has still never been captured. It was not invented.
+#   The recipe reports Action=UnknownBlueprint until the id is supplied.

@@ -213,7 +213,7 @@ IOPM machine token: `Munitions Factory` · 26 entries · Large Ammo 19, Hand Amm
 
 | Output | Build time | Inputs | Notes |
 |---|---|---|---|
-| Gunpowder | `0.8s` | PotassiumNitrate `6`; Carbon `2`; Sulfur `2` | CLOSES the manufactured-missing leaf. Identity previously live-observed; IO reuses the vanilla Magnesium subtype for the item the UI calls Gunpowder |
+| Gunpowder | `0.8s` | PotassiumNitrate `6`; Carbon `2`; Sulfur `2` | **output x10** · CLOSES the manufactured-missing leaf. OUTPUT YIELD 10, live-proven: one manual blueprint execution placed 10 Gunpowder in the machine output. The UI does not display a yield for this recipe - absence of a displayed yield is NOT evidence of yield 1. Identity live-observed as MyObjectBuilder_Ingot/Magnesium; PotassiumNitrate live-confirmed as MyObjectBuilder_Ingot/Niter in the same dump. |
 | Explosives | `1.7s` | IronIngot `1`; Gunpowder `4` | producer directly observed as Munitions Factory |
 | AP Autocannon Clip | `2.5s` | IronIngot `20`; CopperIngot `6`; Gunpowder `8` | capacity 16 |
 | DU Autocannon Clip | `2.5s` | IronIngot `10`; DepletedUranium `10`; CopperIngot `6`; Gunpowder `8` | capacity 16 |

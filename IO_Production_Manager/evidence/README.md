@@ -39,9 +39,18 @@ warning on every run. Do not read a passing coverage report as global coverage.
 ## Transcription rules
 
 - **Quantities exactly as shown.** No rounding, no normalising.
-- **Output yield is not recorded unless the UI stated one.** A single result
-  icon is not evidence of yield — `Lightbulb|10` is a measured non-unity yield
-  that no icon would have revealed.
+- **Output yield is not recorded unless the UI stated one, and an absent yield
+  means UNKNOWN — never 1.** A single result icon is not evidence of yield.
+  Two measured counter-examples: `Lightbulb|10`, displayed as "10x Lightbulb",
+  and `Gunpowder|10`, which displays **no** yield at all and was proven only by
+  manually running one blueprint and counting the output.
+
+  Defaulting an unknown yield to 1 is a guess that fails expensively. The
+  planner computes `jobsWanted = ceil(shortage / yield)`, so assuming 1 where
+  the truth is 10 asks for ten jobs, reserves ten times the ingredients, and
+  makes ten times the goods — while the planner's own arithmetic stays
+  internally consistent and shows nothing wrong. See
+  `tests/tests_yield_math.py`.
 - **Physical subtype ids are never inferred from display names.** Where identity
   is unresolved, `identity_hint` is `null` and reconciliation is left to the
   audit. `identity_confidence` records doubt explicitly, including outright
