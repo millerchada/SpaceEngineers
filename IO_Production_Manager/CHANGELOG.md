@@ -28,6 +28,144 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.40 — final hardening: durable wake ownership, honest durability, a stricter ownership rule
+
+**Repo-ready for live UAT.** Everything the repository can prove is proven; the
+in-game probes remain deferred until Chad is back at the base.
+
+### 1. An `EntityId` is durable ownership, and topology does not cancel it
+
+Recovery used to clear the marker when the id resolved to nothing **or** when the
+block was no longer `IsSameConstructAs(Me)`, and called both "provably nothing to
+restore". Neither claim held up.
+
+`IsSameConstructAs` is gone from recovery entirely. Once IOPM knows *exactly*
+which block it switched on, that block being detached onto another construct —
+ground off, split at a merge block, a rotor coming apart — does not cancel the
+obligation. The id still names one specific antenna, and that antenna is still on
+because of us.
+
+The bigger correction is the null case. `GetBlockWithId` returning null does
+**not** prove the block was destroyed; it is equally consistent with the block
+being temporarily invisible to this terminal system. The script cannot tell those
+apart, so it no longer chooses:
+
+| Marker state | Action |
+|---|---|
+| no marker | nothing to do |
+| will not parse | **corrupt** — discard with a diagnostic |
+| resolves to an `IMyRadioAntenna` | **restore `Enabled=false`**, whatever construct it is on now |
+| resolves to something else | **corrupt** — an impossible ownership state, discard with a diagnostic |
+| does not resolve right now | **retain the marker and retry**, indefinitely |
+| restore throws | retain the marker and retry (unchanged) |
+
+A permanently destroyed antenna therefore leaves a harmless stale marker forever.
+That is the intended trade: a stale number in `Storage` costs nothing, and
+silently abandoning a real antenna IOPM powered on costs the player a block stuck
+on. The two terminal conditions that remain are both *impossible states* rather
+than absent blocks.
+
+The decision is a pure `WakeRecoverAction(hasMarker, parsed, resolved, isAntenna)`
+inside the extracted `<alert-wake>` region, so every row above is a test.
+
+### 2. What `Storage` actually guarantees
+
+The previous entry said the marker "survives a crash that never calls `Save()`".
+That overstates the API.
+
+`Storage` is persisted through the game's **save** lifecycle. Accurately:
+
+| Scenario | Covered |
+|---|---|
+| PB recompile | yes, by the PB lifecycle |
+| normal world save and reload | yes |
+| normal persisted world restart | yes |
+| abrupt host/process crash before the world persists | **no** |
+
+Assigning `Storage` is not a synchronous flush to disk, and the PB API
+establishes no transactional durability. An abrupt dedicated-server crash can
+lose the marker along with everything else that session had not saved.
+
+This is an **API boundary, not a defect**, and no second persistence mechanism
+was added — `CustomData` or anything else would buy no stronger guarantee and
+would create a second source of truth for the same fact.
+
+The ordering that *is* load-bearing is unchanged and still invariant-checked:
+
+    record the Storage marker  ->  THEN  Enabled = true
+
+so an interruption between the two leaves a stale marker and an antenna still
+off, never the reverse.
+
+### 3. Owned-member discovery is now structural, not textual
+
+`owned_members()` swept the whole class body with
+`r',\s*([A-Za-z_]\w*)\s*(?=[,;=])'`. That satisfies the ownership rule only while
+our helper types stay implementation-free — the moment one grows a method, its
+parameters and locals start looking like member declarations.
+
+Replaced with a depth-aware scan of each type body. It tracks brace depth and
+string literals, collects a declaration head only at **direct type-body depth**,
+closes a field declaration on `;` and skips a method or property body wholesale
+on `{`. Multi-field declarations (`public int Sat, Short, NoOp;`) are still
+recognised, with comma splitting that respects `<>`, `()` and `[]` so a
+`Dictionary<string, LQ>` type or a `new List<CI>(a, b)` initialiser is not
+mistaken for further field names.
+
+**Every exclusion is retained**: the `se_stubs.cs` API surface, the BCL list,
+keywords and the NEVER set, collision-free generated names, deterministic
+mapping, literals untouched, inverse round-trip, and the artifact compile gate.
+
+**The measurable outcome: no savings were lost.** Still **90 member names, still
+3,396 characters** — the two parsers agree exactly on the real source, because
+IOPM's helper types genuinely have no method locals today. The strictness buys
+nothing now and everything later, which is the right time to buy it.
+
+New negative controls in `tests/tests_minify.py` write the hazardous class out in
+full and require the parser to earn the distinction structurally:
+
+    public int RealMember, SecondMember;      -> owned
+    public int Sat, Short, NoOp;              -> owned
+    public Dictionary<string, LQ> Table = ... -> owned (Table, not LQ)
+    public bool Derived { get { ... Inner ... } } -> Derived owned, Inner NOT
+    public void Test(int parameter) {
+      int localA = 1, localB = 2;             -> Test owned
+      Foo(localA, localB);                    -> parameter/localA/localB/Foo NOT owned
+    }
+
+### Results
+
+    tests_alert_engine        129 checks                  PASS   (was 118)
+    tests_canonicalize_stock   52 checks                  PASS
+    tests_invariants           46 checks + 19 controls    PASS   (was 43 + 17)
+    tests_minify               71 checks                  PASS   (was 55)
+    tests_yield_math                                      PASS
+    release gate, v2.4.40                                 PASS
+    release gate, v2.4.39                                 PASS
+    two independent builds                                BYTE-IDENTICAL
+
+    artifact  87,687 chars    headroom  12,313
+
+Four new negative controls: recovery abandoning an antenna it merely cannot see;
+recovery giving up because the antenna moved construct; and the two member-parser
+poisons above. All rejected.
+
+The artifact grew 439 characters against the previous 87,248, entirely from the
+new recovery decision table and its reasoning. No size work was done and none is
+needed: the target was ≤ 90,000 / ≥ 10,000 and both still hold with room.
+
+### Status
+
+**v2.4.40 is repo-ready for live UAT.** The remaining gates are the two only the
+game can answer, unchanged:
+
+- **probe 1.1** — whitelist acceptance of `Components.TryGet`
+- **probe 4.8 / 4.8b / 4.8c** — recompile mid-wake, with IOPM disabled, and with
+  the antenna renamed
+
+Worth adding to 4.8c now that ownership is topological-independent: grinding the
+antenna off onto a separate grid mid-wake should still see it switched off.
+
 ## 2.4.40 — antenna-wake corrections, then a dedicated character-budget pass
 
 **Still the candidate. Live UAT still deferred — Chad is away from the base.**

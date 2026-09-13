@@ -154,8 +154,19 @@ def run(src, report):
     check('recovery resolves by EntityId, which a rename cannot defeat',
           bool(m) and 'GridTerminalSystem.GetBlockWithId(id)' in m.group(0)
           and 'Storage = _wkAnt.EntityId.ToString();' in m.group(0))
-    check('a recovered block must still be a radio antenna on this construct',
-          bool(m) and 'if (a == null || !a.IsSameConstructAs(Me)) {' in m.group(0))
+    # `region` is CODE ONLY - the comment above WakeRecover explains that construct membership
+    # is deliberately not checked, and a raw text search would match that explanation.
+    check('recovery restores by id and does NOT require the same construct',
+          bool(m) and 'WakeRecoverAction(has, parsed, b != null, a != null)' in m.group(0)
+          and not hits(r'IsSameConstructAs', region))
+    check('an unresolved id is retried, never treated as nothing to restore',
+          bool(m) and 'if (!resolved) return WR_RETRY;' in m.group(0))
+    check('  ... and the RETRY branch never clears the marker',
+          bool(m) and 'case WR_RETRY:' in m.group(0)
+          and 'Storage' not in m.group(0).split('case WR_RETRY:')[1].split('break;')[0])
+    check('only a corrupt marker is discarded',
+          bool(m) and 'if (!parsed) return WR_CORRUPT;' in m.group(0)
+          and 'if (!isAntenna) return WR_CORRUPT;' in m.group(0))
 
     # The rules below are the ones the v2.4.40 review found broken. Each names an EXACT line,
     # because each defect was wrong by a single token and a looser pattern would have matched
@@ -176,7 +187,7 @@ def run(src, report):
           'DegradedNoAntenna' not in body)
     check('Storage carries the wake marker and nothing else',
           len(hits(r'Storage\s*=', lines)) == len(hits(r'Storage\s*=', region))
-          and len(hits(r'Storage\s*=', region)) == 7)
+          and len(hits(r'Storage\s*=', region)) == 6)
     check('Save() still persists nothing', 'public void Save() { }' in src)
 
     report('-- the extraction markers tests_alert_engine.py depends on')
@@ -240,6 +251,12 @@ MUTANTS = [
     ('a failed restore giving up on the marker',
      lambda s: s.replace('    _wkErr = "interrupted wake: restore of " + id + " failed, marker retained";',
                          '    Storage = ""; _wkDone = true;', 1)),
+    ('recovery abandoning an antenna it merely cannot see right now',
+     lambda s: s.replace('  if (!resolved) return WR_RETRY;',
+                         '  if (!resolved) return WR_CORRUPT;', 1)),
+    ('recovery giving up when the antenna moved construct',
+     lambda s: s.replace('  if (!isAntenna) return WR_CORRUPT;',
+                         '  if (!isAntenna || true) return WR_CORRUPT;', 1)),
     ('a failed send camping on the antenna',
      lambda s: s.replace('    if (retire) return WA_REST;', '', 1)),
     ('a deleted extraction marker',

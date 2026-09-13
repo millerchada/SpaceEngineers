@@ -41,7 +41,7 @@ python ../../tools/build_pb.py IO_Production_Manager_v2.4.40.cs
 # -> IO_Production_Manager_v2.4.40.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.40: source 179,526 -> artifact **87,248** chars (**12,752** headroom).
+v2.4.40: source 182,400 -> artifact **87,687** chars (**12,313** headroom).
 v2.4.39: source 151,049 -> artifact 78,188 chars (21,812 headroom).
 
 Both artifacts shrank in 2.4.40 without a line of logic changing, because the
@@ -65,7 +65,7 @@ every build:
 |---|---|---|
 | comments + indentation | ~74,000 | `//` comments, leading whitespace, blank lines |
 | identifier shortening | 9,879 | our own `_fields` and method names |
-| own-type member shortening | 3,396 | members of types **this file defines** (2.4.40+) |
+| own-type member shortening | 3,396 | **direct member declarations** of types this file defines (2.4.40+) |
 | space tightening | 6,517 | spaces that provably cannot separate two tokens (2.4.40+) |
 
 Newlines are still kept. Packing them to a 200-character line width was measured
@@ -697,7 +697,16 @@ switching it back off**, nothing in RAM remembers IOPM owes a restore — and yo
 antenna is left on, by IOPM, forever.
 
 So `Storage` carries one number: the **`EntityId`** of the antenna IOPM
-currently owns, and nothing else. Not the alert engine, not the state machine,
+currently owns, and nothing else.
+
+What that actually guarantees, stated accurately: `Storage` is persisted through
+the game's **save** lifecycle, so it covers a PB recompile, a normal world save
+and reload, and a normal persisted world restart. It is **not** a synchronous
+flush to disk, and the PB API establishes no transactional durability — an abrupt
+host or process crash before the world persists can lose the marker along with
+everything else that session had not saved. That is an API boundary, not a defect
+to route around; a second persistence mechanism would buy no stronger guarantee
+and would create a second source of truth. Not the alert engine, not the state machine,
 not history. The configured *name* selects the antenna in the first place; the
 moment IOPM takes ownership it tracks the block by id, because a name can be
 edited and an id cannot.
@@ -718,9 +727,29 @@ exists.
 **The marker is cleared only after the restore actually succeeds.** If the write
 throws, the marker is kept, the failure is reported, and it is retried on a later
 execution — and across another restart. Recovery is not one-shot when the restore
-itself failed. The only other way the marker clears is a terminal condition where
-restoration is provably unnecessary: the block no longer resolves, is not a radio
-antenna, or is no longer on this construct.
+itself failed.
+
+**An `EntityId` is durable ownership, and topology does not cancel it.** Recovery
+does *not* check `IsSameConstructAs`: once IOPM knows exactly which block it
+switched on, that block being detached onto another construct — ground off, split
+at a merge block, a rotor coming apart — does not cancel the obligation.
+
+| Marker state | Action |
+|---|---|
+| no marker | nothing to do |
+| will not parse | **corrupt** — discarded with a diagnostic |
+| resolves to an `IMyRadioAntenna` | **restore**, whatever construct it is on now |
+| resolves to something else | **corrupt** — an impossible ownership state, discarded |
+| does not resolve right now | **keep the marker and retry**, indefinitely |
+| the restore throws | keep the marker and retry |
+
+The null case is the one worth understanding. `GetBlockWithId` returning nothing
+does **not** prove the block was destroyed — it is equally consistent with the
+block being temporarily invisible to this terminal system, and the script cannot
+tell those apart. So it does not choose. A permanently destroyed antenna leaves a
+harmless stale number in `Storage` forever, which is the intended trade: silently
+abandoning a real antenna IOPM powered on costs you a block stuck on, and a stale
+number costs nothing.
 
 The marker is written **before** `Enabled = true`, never after. An interruption
 between the two then leaves a stale marker and an antenna that is still off,

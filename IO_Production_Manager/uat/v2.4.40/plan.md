@@ -60,7 +60,7 @@ at terminal properties. Capture the exact compiler message into
 
 ## Probe 1 — transport, before any threshold is touched
 
-Paste `IO_Production_Manager_v2.4.40.min.cs` (**87,248 chars**, 12,752 headroom)
+Paste `IO_Production_Manager_v2.4.40.min.cs` (**87,687 chars**, 12,313 headroom)
 into the PB. The earlier size objection is resolved — a dedicated build-time
 reclamation pass reclaimed 9,913 characters without touching runtime logic.
 
@@ -407,6 +407,12 @@ from `Main()` outside every config gate. Recovery also survives
 The only case where nothing can happen is the programmable block itself being
 off — no script can run then. It recovers on the first execution after you switch
 the PB back on; confirm that too.
+
+**4.8d — topology change during the outage.** Harder to stage, worth doing if
+convenient: while `WakeOwned=True` and the PB is stopped, grind the antenna free
+onto its own small grid (or detach it at a connector/merge block), then restart.
+Expected: it is **still switched off**. Ownership is an `EntityId`, and leaving
+the construct does not cancel IOPM's obligation to restore a block it powered on.
 
 **4.8c — a rename during the outage no longer defeats recovery.** Repeat step 3,
 and while the PB is stopped, **rename** `Compact Antenna Moon` to something else.

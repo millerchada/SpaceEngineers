@@ -163,6 +163,28 @@ DRIVER = '''
     outp += "|" + SimTick(true, true, true, false, true);          // rest
     return outp + "|" + (simOn ? "ON" : "OFF");
   }
+  // Interrupted-wake recovery across executions. The simulated world says whether the id
+  // resolves and to what; the DECISION is the shipped WakeRecoverAction, and the only effects
+  // applied here are the two a real execution would have - clear the marker, or turn it off.
+  bool recMark; string recLog;
+  void RecTick(bool parsed, bool resolved, bool isAntenna, bool restoreOk) {
+    int a = WakeRecoverAction(recMark, parsed, resolved, isAntenna);
+    if (a == WR_NONE) recLog += "|none";
+    else if (a == WR_CORRUPT) { recMark = false; recLog += "|corrupt"; }
+    else if (a == WR_RETRY) recLog += "|retry";
+    else if (restoreOk) { recMark = false; recLog += "|restored"; }
+    else recLog += "|failed";
+  }
+  string RecRun(string what) {
+    recMark = true; recLog = "";
+    if (what == "offgrid") RecTick(true, true, true, true);
+    else if (what == "unresolved") { RecTick(true, false, false, true); RecTick(true, false, false, true); }
+    else if (what == "laterok") { RecTick(true, false, false, true); RecTick(true, true, true, true); RecTick(true, true, true, true); }
+    else if (what == "wrongtype") RecTick(true, true, false, true);
+    else if (what == "unparsable") RecTick(false, false, false, true);
+    else if (what == "throws") { RecTick(true, true, true, false); RecTick(true, true, true, true); }
+    return recLog + (recMark ? "|MARK" : "|CLEAR");
+  }
   // Several pools alerting in the same evaluation: ONE wake, one batch, one restore.
   string WakeBatch(int n) {
     SimReset(false);
@@ -355,6 +377,19 @@ DRIVER = '''
     EqI("  ... and the antenna is OFF at the end", simOn ? 1 : 0, 0);
     Eq("a send that succeeds after a failure still restores once",
        WakeFailThenOk(), "wake|send|rest|wake|send|rest|OFF");
+
+    Console.WriteLine("-- interrupted-wake recovery: an EntityId is durable ownership");
+    EqI("no marker at all -> nothing to do", WakeRecoverAction(false, false, false, false), WR_NONE);
+    EqI("marker will not parse -> corrupt", WakeRecoverAction(true, false, false, false), WR_CORRUPT);
+    EqI("id does not resolve -> RETRY, never corrupt", WakeRecoverAction(true, true, false, false), WR_RETRY);
+    EqI("resolves, but not an antenna -> corrupt", WakeRecoverAction(true, true, true, false), WR_CORRUPT);
+    EqI("resolves to an antenna -> restore", WakeRecoverAction(true, true, true, true), WR_RESTORE);
+    Eq("an antenna now on ANOTHER construct is still restored", RecRun("offgrid"), "|restored|CLEAR");
+    Eq("an id that will not resolve keeps the marker", RecRun("unresolved"), "|retry|retry|MARK");
+    Eq("  ... and restores once it resolves again", RecRun("laterok"), "|retry|restored|none|CLEAR");
+    Eq("a wrong-type id is discarded as corrupt", RecRun("wrongtype"), "|corrupt|CLEAR");
+    Eq("an unparsable marker is discarded as corrupt", RecRun("unparsable"), "|corrupt|CLEAR");
+    Eq("a throwing restore keeps the marker and retries", RecRun("throws"), "|failed|restored|CLEAR");
 
     Console.WriteLine("-- antenna wake: batching");
     Eq("three alerts in one evaluation wake the antenna once", WakeBatch(3), "wake|send3|rest");

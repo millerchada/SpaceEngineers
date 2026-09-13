@@ -2460,6 +2460,22 @@ const int WA_NONE = 0, WA_SEND = 1, WA_WAKE = 2, WA_REST = 3, WA_FAIL = 4, WA_DR
 //               retry starts a FRESH sequence. Without this a throwing controller would keep
 //               the player's antenna powered indefinitely, one failed retry at a time - the
 //               feature turning into the opposite of what it promises.
+// Interrupted-wake recovery, as a decision table. Separated from the block writes so every
+// row is testable, because the rows are where this went wrong: an id that does not resolve
+// right now was previously treated as "provably nothing to restore", which silently abandoned
+// antennas IOPM had powered on.
+//   resolved  - GetBlockWithId returned a block. FALSE proves nothing: the block may be
+//               destroyed, or merely not visible to this terminal system this tick.
+//   isAntenna - that block is an IMyRadioAntenna. Construct membership is deliberately NOT an
+//               input; an EntityId is durable ownership and detaching does not cancel it.
+const int WR_NONE = 0, WR_CORRUPT = 1, WR_RETRY = 2, WR_RESTORE = 3;
+static int WakeRecoverAction(bool hasMarker, bool parsed, bool resolved, bool isAntenna) {
+  if (!hasMarker) return WR_NONE;
+  if (!parsed) return WR_CORRUPT;      // not a number: an impossible state, not an absent block
+  if (!resolved) return WR_RETRY;      // unknown, NOT absent. Keep the marker.
+  if (!isAntenna) return WR_CORRUPT;   // IOPM only ever owns a radio antenna
+  return WR_RESTORE;
+}
 static int WakeAction(bool wakeCfg, bool useAntenna, bool antUsable, bool antEnabled, bool pending, bool owned, bool retire) {
   if (owned) {
     // Withdrawn config, or the antenna went away under us: undo our change and stand down.
@@ -2500,13 +2516,20 @@ void WakeResolve() {
   catch { _wkAnt = null; _wkFound = 0; }
 }
 // STORAGE IS WRITTEN FIRST, AND THIS ORDER IS THE WHOLE RESTART-SAFETY ARGUMENT.
-// Alert state is in memory and dies with the script. If the PB is recompiled, reloaded or the
-// world reloaded between switching the antenna on and switching it back off, nothing in RAM
+// Alert state is in memory and dies with the script. If the PB is recompiled or the world is
+// reloaded between switching the antenna on and switching it back off, nothing in RAM
 // remembers that IOPM owes a restore - and the player is left with an antenna that IOPM turned
 // on and will never turn off. One number in Storage survives that, and it holds nothing else:
 // not the alert engine, not the state machine, just "this antenna is on because of me".
-// Marking BEFORE the write means a crash in between leaves a stale marker and an antenna that
-// is still off - harmless, and WakeRecover simply clears it. The reverse order could strand it.
+// Marking BEFORE the write means an interruption in between leaves a stale marker and an
+// antenna that is still off - harmless, and WakeRecover retries it. The reverse order strands.
+// WHAT Storage ACTUALLY GUARANTEES, stated accurately rather than hopefully. It is persisted
+// through the game's SAVE lifecycle, so it covers: PB recompile, normal world save and reload,
+// and a normal persisted world restart. It does NOT make this assignment a synchronous flush
+// to disk, and the PB API establishes no transactional durability - an abrupt host or process
+// crash BEFORE the world persists can lose the marker along with everything else the session
+// had not saved. That is an API boundary, not a defect to route around: adding a second
+// persistence mechanism would buy no stronger guarantee and would add a second source of truth.
 void WakeOn() {
   try {
     Storage = _wkAnt.EntityId.ToString();
@@ -2553,39 +2576,56 @@ void WakeDrop() {
 // THE ONE UNAVOIDABLE BOUNDARY: if the programmable block itself is off or not executing, no
 // script can restore anything. Recovery then happens on the first execution after the PB runs
 // again, which is the earliest moment any code of ours exists.
-// Resolution is by ENTITY ID, not by name. A rename during the outage used to defeat recovery;
-// an EntityId is stable for the life of the block.
+// OWNERSHIP IS AN ENTITY ID, AND AN ENTITY ID IS DURABLE. Recovery does NOT check
+// IsSameConstructAs: once IOPM knows exactly which block it switched on, that block being
+// detached onto another construct - grinding, a merge block, a rotor coming apart - does not
+// cancel the obligation. The id still names one specific antenna, and that antenna is still on
+// because of us.
 void WakeRecover() {
   if (_wkDone) return;
   string mark = Storage;
-  if (string.IsNullOrEmpty(mark)) { _wkDone = true; return; }
-  long id;
-  if (!long.TryParse(mark, out id)) {
-    Storage = ""; _wkDone = true; _wkErr = "unreadable wake marker discarded";
-    return;
-  }
+  long id = 0;
+  bool has = !string.IsNullOrEmpty(mark);
+  bool parsed = has && long.TryParse(mark, out id);
   IMyTerminalBlock b = null;
-  try { b = GridTerminalSystem.GetBlockWithId(id); } catch { }
+  if (parsed) { try { b = GridTerminalSystem.GetBlockWithId(id); } catch { b = null; } }
   IMyRadioAntenna a = b as IMyRadioAntenna;
-  if (a == null || !a.IsSameConstructAs(Me)) {
-    // TERMINAL CONDITION, and the only other one: the block is gone, is not a radio antenna,
-    // or is no longer part of this construct. There is provably nothing for IOPM to restore,
-    // so the marker has done its job.
-    Storage = ""; _wkDone = true;
-    _wkErr = "interrupted wake: antenna " + id + " no longer resolves; nothing to restore";
-    return;
+  switch (WakeRecoverAction(has, parsed, b != null, a != null)) {
+    case WR_NONE:
+      _wkDone = true;
+      break;
+    case WR_CORRUPT:
+      // The only two terminal conditions, and neither is a guess about the world: a marker
+      // that is not a number, or an id that resolves to something IOPM could never have taken
+      // ownership of. Both are impossible states rather than absent antennas.
+      Storage = "";
+      _wkDone = true;
+      _wkErr = parsed ? "wake marker " + id + " is not a radio antenna; discarded as corrupt"
+        : "wake marker unreadable; discarded as corrupt";
+      break;
+    case WR_RETRY:
+      // NOT a terminal condition. GetBlockWithId returning null does NOT prove the block was
+      // destroyed - it is equally consistent with the block being temporarily invisible to
+      // this terminal system. The script cannot tell those apart, so it does not choose. The
+      // marker is kept and retried, which in the worst case leaves a harmless stale marker
+      // forever and in the ordinary case restores an antenna a moment later. Abandoning a real
+      // antenna IOPM powered on is the one outcome worth avoiding.
+      _wkErr = "wake marker " + id + " does not resolve right now; retained and retried";
+      break;
+    default:
+      try { a.Enabled = false; }
+      catch {
+        // THE MARKER IS NOT CLEARED. A restore that threw is a restore that has not happened,
+        // and clearing here would destroy the only record that IOPM owes one - permanently,
+        // across this execution AND any further restart. Retried on the next execution.
+        _wkErr = "interrupted wake: restore of " + id + " failed, marker retained";
+        return;
+      }
+      Storage = "";
+      _wkDone = true;
+      _wkErr = "restored antenna " + id + " after an interrupted wake";
+      break;
   }
-  try { a.Enabled = false; }
-  catch {
-    // THE MARKER IS NOT CLEARED. A restore that threw is a restore that has not happened, and
-    // clearing here would destroy the only record that IOPM owes one - permanently, across
-    // this execution AND any further restart. Retried on the next execution instead.
-    _wkErr = "interrupted wake: restore of " + id + " failed, marker retained";
-    return;
-  }
-  Storage = "";
-  _wkDone = true;
-  _wkErr = "restored antenna " + id + " after an interrupted wake";
 }
 void AlertResolve() {
   _bcChat = null;

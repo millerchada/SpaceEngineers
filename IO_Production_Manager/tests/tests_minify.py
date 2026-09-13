@@ -68,6 +68,35 @@ def main():
         check('declared-by-us but API-owned, still refused: %s' % m, m not in owned)
     check('declared-by-us but BCL-owned, still refused: Count', 'Count' not in owned)
 
+    print('-- NEGATIVE CONTROL: only DIRECT member declarations are owned')
+    # The ownership rule says a rename target must be a MEMBER DECLARATION of a type this file
+    # defines. A regex sweeping the whole class body satisfies that only while our helper types
+    # stay implementation-free; the moment one grows a method, its parameters and locals start
+    # looking like members. This is that class, written out in full so the parser has to earn
+    # the distinction structurally rather than by luck.
+    helper = (
+        'class QzHelper {' + chr(10) +
+        'public int RealMember, SecondMember;' + chr(10) +
+        'public Dictionary<string, LQ> Table = new Dictionary<string, LQ>(SCI);' + chr(10) +
+        'public int Sat, Short, NoOp;' + chr(10) +
+        'public bool Derived { get { return Inner.Count == 1; } }' + chr(10) +
+        'public void Test(int parameter) {' + chr(10) +
+        'int localA = 1, localB = 2;' + chr(10) +
+        'Foo(localA, localB);' + chr(10) +
+        '}' + chr(10) + '}')
+    own = minify_names.owned_members(helper, api)
+    for want in ('RealMember', 'SecondMember', 'Sat', 'NoOp', 'Table', 'Test', 'Derived'):
+        check('direct member declaration is owned: %s' % want, want in own, str(sorted(own)))
+    for bad, why in (('parameter', 'a method parameter'),
+                     ('localA', 'a local'),
+                     ('localB', 'a second local in the same statement'),
+                     ('Foo', 'a called method'),
+                     ('Inner', 'an identifier inside a property body')):
+        check('NOT owned - %s: %s' % (why, bad), bad not in own, str(sorted(own)))
+    check('multi-field declarations are still found whole',
+          {'Sat', 'Short', 'NoOp'} <= own or 'Short' in minify_names.BCL_MEMBERS,
+          str(sorted(own)))
+
     print('-- NEGATIVE CONTROL: no framework member is renamed in the real artifact')
     renamed, mapping, report = minify_names.minify(stripped, stub_path=STUBS)
     for m in ('CustomName', 'CustomData', 'EntityId', 'IsWorking', 'AddQueueItem',
