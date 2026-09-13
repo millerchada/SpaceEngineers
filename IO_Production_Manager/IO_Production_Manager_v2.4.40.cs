@@ -3,9 +3,10 @@
 // ABSOLUTE INVARIANT: AddQueueItem() is the ONLY production-queue mutation in this file.
 // No ClearQueue, no removal, no reorder. The script owns [IOPM.*] in Custom Data only.
 // INVARIANT: remote/docked inventory NEVER enters base _onHand or [Stock].
-// INVARIANT: the AlertEvaluation phase is OBSERVATIONAL. It reads warehouse fill and sends
-// chat messages; it mutates no queue, no inventory and no block setting. Broadcast Controller
-// target/UseAntenna/chat name stay NATIVE BLOCK SETTINGS owned by the player.
+// INVARIANT: the AlertEvaluation phase mutates no queue and no inventory, and the ONLY block
+// setting it may write is Enabled on the CONFIGURED ALERT ANTENNA, opt-in, while an alert is
+// pending, restoring what it changed. Broadcast Controller target/UseAntenna/chat name and
+// every other antenna property stay NATIVE BLOCK SETTINGS owned by the player.
 // v2.4.40: first-stage alerts - Broadcast Controller transport, a deterministic capacity
 // state engine with hysteresis and a flap-guard cooldown, and [IOPM.Alerts] diagnostics.
 // An alert is ANNOUNCED only once SendMessage returned without throwing; an observed startup
@@ -252,6 +253,11 @@ public Program() {
 public void Save() { } // machine health is intentionally in-memory only
 public void Main(string argument, UpdateType updateSource) {
   if ((updateSource & UpdateType.Update10) == 0) return;
+  // FIRST, AND OUTSIDE EVERY GATE BELOW. An antenna IOPM switched on must come back down even
+  // if [General] Enabled has since been set false - which stops cycles entirely, so recovery
+  // reached through the alert phase could never run. Reads no config and starts no cycle, so
+  // the config-snapshot rule is untouched.
+  WakeRecover();
   double dt = Runtime.TimeSinceLastRun.TotalSeconds;
   if (dt <= 0) dt = 0.1667;
   _elapsedSinceCycle += dt;
@@ -324,7 +330,9 @@ void RunCyclePhase() {
     case PHASE_APPLYPLAN: if (_cfg.ProductionEnabled) ApplyPlan(); // AddQueueItem() remains the sole queue mutation
       _cyclePhase = PHASE_ALERTS;
       break;
-    case PHASE_ALERTS: AlertEvaluation(); // read-only: classify, transition, deliver. No mutation.
+    case PHASE_ALERTS: AlertEvaluation(); // classify, transition, deliver. Mutates no queue and
+      // no inventory; the ONLY block setting it may write is Enabled on the configured alert
+      // antenna (see the ALERTS section), and only while an alert is actually pending.
       _cyclePhase = PHASE_DIAGNOSTICS;
       break;
     case PHASE_DIAGNOSTICS: WriteDiagnostics();
@@ -2448,12 +2456,17 @@ const int WA_NONE = 0, WA_SEND = 1, WA_WAKE = 2, WA_REST = 3, WA_FAIL = 4, WA_DR
 //               is still the same block we woke (a rename mid-sequence makes this false)
 //   pending   - there is a real alert message waiting. NO PENDING ALERT, NO ANTENNA CHANGE:
 //               a cycle merely running must never move a block.
-static int WakeAction(bool wakeCfg, bool useAntenna, bool antUsable, bool antEnabled, bool pending, bool owned) {
+//   retire    - a send failed while WE held this wake. The antenna comes back down and any
+//               retry starts a FRESH sequence. Without this a throwing controller would keep
+//               the player's antenna powered indefinitely, one failed retry at a time - the
+//               feature turning into the opposite of what it promises.
+static int WakeAction(bool wakeCfg, bool useAntenna, bool antUsable, bool antEnabled, bool pending, bool owned, bool retire) {
   if (owned) {
     // Withdrawn config, or the antenna went away under us: undo our change and stand down.
     if (!wakeCfg || !useAntenna || !antUsable) return WA_REST;
     // The player switched it off mid-sequence. Their setting wins; we simply stop claiming it.
     if (!antEnabled) return WA_DROP;
+    if (retire) return WA_REST;  // tear this wake down before anything is attempted again
     return pending ? WA_SEND : WA_REST;
   }
   if (!wakeCfg || !useAntenna) return pending ? WA_SEND : WA_NONE; // antenna never touched
@@ -2466,12 +2479,14 @@ List<IMyRadioAntenna> _ants = new List<IMyRadioAntenna>();
 IMyRadioAntenna _wkAnt;   // resolved from config this cycle; null unless exactly one match
 IMyRadioAntenna _wkOwn;   // the antenna WE switched on; non-null exactly while we owe a restore
 int _wkFound, _wkState;
-bool _wkEnabled, _wkBroadcast, _wkRecovered;
+bool _wkEnabled, _wkBroadcast, _wkDone, _wkRetire;
 string _wkErr = "";
 List<string> _alPendK = new List<string>(), _alPendM = new List<string>();
 // EXACT name, same construct, EXACTLY ONE match. Never "the first antenna found", never a
 // fallback to some other antenna - waking a block the player did not nominate is not a
 // convenience, it is IOPM operating machinery it was not asked to operate.
+// NAME IS FOR SELECTION ONLY. The moment IOPM takes ownership the antenna is tracked by
+// EntityId, because a name can be edited and an EntityId cannot.
 void WakeResolve() {
   _wkAnt = null; _wkFound = 0; _wkEnabled = false; _wkBroadcast = false;
   if (_cfg.AlertAntenna == "") return;
@@ -2488,18 +2503,22 @@ void WakeResolve() {
 // Alert state is in memory and dies with the script. If the PB is recompiled, reloaded or the
 // world reloaded between switching the antenna on and switching it back off, nothing in RAM
 // remembers that IOPM owes a restore - and the player is left with an antenna that IOPM turned
-// on and will never turn off. One string in Storage survives that, and it holds nothing else:
+// on and will never turn off. One number in Storage survives that, and it holds nothing else:
 // not the alert engine, not the state machine, just "this antenna is on because of me".
 // Marking BEFORE the write means a crash in between leaves a stale marker and an antenna that
 // is still off - harmless, and WakeRecover simply clears it. The reverse order could strand it.
 void WakeOn() {
   try {
-    Storage = _cfg.AlertAntenna;
+    Storage = _wkAnt.EntityId.ToString();
     _wkAnt.Enabled = true;
     _wkOwn = _wkAnt;
     _wkState = WK_WAKING;
     _wkErr = "";
-  } catch { _wkOwn = null; Storage = ""; _wkState = WK_ERR; _wkErr = "enable failed"; }
+  } catch {
+    // The enable itself failed, so the antenna was never switched on and there is provably
+    // nothing to restore. That is the one place clearing the marker early is sound.
+    _wkOwn = null; Storage = ""; _wkState = WK_ERR; _wkErr = "enable failed";
+  }
 }
 void WakeOff() {
   try {
@@ -2511,32 +2530,62 @@ void WakeOff() {
   }
   _wkOwn = null;
   Storage = "";
+  _wkRetire = false;
   _wkState = WK_IDLE;
   _wkErr = "";
 }
 // Stop claiming the antenna without touching it. Used when the player switched it off
 // themselves mid-sequence: their action is the setting, and re-asserting ours would be IOPM
-// fighting the player over a block they own.
+// fighting the player over a block they own. It is already off, so nothing needs restoring.
 void WakeDrop() {
   _wkOwn = null;
   Storage = "";
+  _wkRetire = false;
   if (_wkState != WK_ERR) _wkState = WK_IDLE;
 }
-// One shot, on the first evaluation after a load, BEFORE the Enabled gate - a stranded antenna
-// must be released even if alerting has since been switched off entirely.
+// INTERRUPTED-WAKE RECOVERY. Called from Main() on every execution, OUTSIDE every config gate
+// there is - not from the alert phase, and not from inside a cycle.
+// The reason is blunt: no cycle starts when [General] Enabled=false, so recovery reached only
+// through AlertEvaluation could never run on a base whose IOPM had been switched off, and an
+// antenna IOPM powered up would stay up indefinitely. Whether the player has since disabled
+// IOPM, disabled alerts or disabled the wake feature has no bearing on IOPM's obligation to
+// put back a block it switched on.
+// THE ONE UNAVOIDABLE BOUNDARY: if the programmable block itself is off or not executing, no
+// script can restore anything. Recovery then happens on the first execution after the PB runs
+// again, which is the earliest moment any code of ours exists.
+// Resolution is by ENTITY ID, not by name. A rename during the outage used to defeat recovery;
+// an EntityId is stable for the life of the block.
 void WakeRecover() {
-  if (_wkRecovered) return;
-  _wkRecovered = true;
-  string n = Storage;
-  if (string.IsNullOrEmpty(n)) return;
-  int found = 0;
-  IMyRadioAntenna a = null;
-  for (int i = 0; i < _ants.Count; i++)
-    if (string.Equals(_ants[i].CustomName, n, OIC)) { found++; if (a == null) a = _ants[i]; }
+  if (_wkDone) return;
+  string mark = Storage;
+  if (string.IsNullOrEmpty(mark)) { _wkDone = true; return; }
+  long id;
+  if (!long.TryParse(mark, out id)) {
+    Storage = ""; _wkDone = true; _wkErr = "unreadable wake marker discarded";
+    return;
+  }
+  IMyTerminalBlock b = null;
+  try { b = GridTerminalSystem.GetBlockWithId(id); } catch { }
+  IMyRadioAntenna a = b as IMyRadioAntenna;
+  if (a == null || !a.IsSameConstructAs(Me)) {
+    // TERMINAL CONDITION, and the only other one: the block is gone, is not a radio antenna,
+    // or is no longer part of this construct. There is provably nothing for IOPM to restore,
+    // so the marker has done its job.
+    Storage = ""; _wkDone = true;
+    _wkErr = "interrupted wake: antenna " + id + " no longer resolves; nothing to restore";
+    return;
+  }
+  try { a.Enabled = false; }
+  catch {
+    // THE MARKER IS NOT CLEARED. A restore that threw is a restore that has not happened, and
+    // clearing here would destroy the only record that IOPM owes one - permanently, across
+    // this execution AND any further restart. Retried on the next execution instead.
+    _wkErr = "interrupted wake: restore of " + id + " failed, marker retained";
+    return;
+  }
   Storage = "";
-  if (found != 1) { _wkErr = "interrupted wake: " + n + " no longer resolves, not restored"; return; }
-  try { a.Enabled = false; _wkErr = "restored " + n + " after an interrupted wake"; }
-  catch { _wkErr = "could not restore " + n + " after an interrupted wake"; }
+  _wkDone = true;
+  _wkErr = "restored antenna " + id + " after an interrupted wake";
 }
 void AlertResolve() {
   _bcChat = null;
@@ -2567,7 +2616,6 @@ void AlertEvaluation() {
   double dt = Math.Max(0, (nowUtc - _alLastEval).TotalSeconds);
   _alLastEval = nowUtc;
   AlertResolve();
-  WakeRecover(); // before every gate below: a stranded antenna is released unconditionally
   if (!_cfg.AlertsEnabled) {
     // A gated phase clears its own diagnostics on the skip path, not just on entry. Dropping
     // the state as well means switching alerting back on is a fresh start rather than a replay
@@ -2611,7 +2659,7 @@ void AlertEvaluation() {
   // configured name. A rename mid-sequence therefore restores rather than sends.
   bool usable = _wkFound == 1 && (!owned || _wkAnt == _wkOwn);
   bool en = owned ? WakeOwnedEnabled() : _wkEnabled;
-  switch (WakeAction(_cfg.WakeAntenna, _bcUseAntenna, usable, en, _alPendM.Count > 0, owned)) {
+  switch (WakeAction(_cfg.WakeAntenna, _bcUseAntenna, usable, en, _alPendM.Count > 0, owned, _wkRetire)) {
     case WA_SEND: AlertFlush(); break;
     case WA_WAKE: WakeOn(); break;   // nothing is sent in the execution that enables the antenna
     case WA_REST: WakeOff(); break;
@@ -2630,9 +2678,16 @@ bool WakeOwnedEnabled() { try { return _wkOwn.Enabled; } catch { return false; }
 // not toggle the antenna once each. Each message commits independently, so one throwing send
 // leaves only its own transition pending.
 void AlertFlush() {
+  bool failed = false;
   for (int i = 0; i < _alPendM.Count; i++)
-    if (AlertSend(_alPendM[i])) AlertCommit(_alPendK[i], _alPendM[i]);
-  if (_wkOwn != null) _wkState = WK_READY;
+    if (AlertSend(_alPendM[i])) AlertCommit(_alPendK[i], _alPendM[i]); else failed = true;
+  if (_wkOwn != null) {
+    _wkState = WK_READY;
+    // Retire on the NEXT execution, never in this one. Some of the batch may have gone out,
+    // and cutting the antenna in the same execution as a successful send is exactly the race
+    // the wait boundary exists to avoid.
+    if (failed) _wkRetire = true;
+  }
 }
 // FIRE AND FORGET, but not fire and pretend. Returns true only when SendMessage returned
 // without throwing - which means "handed to the controller", never "received by anyone".

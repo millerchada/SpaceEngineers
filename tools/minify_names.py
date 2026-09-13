@@ -32,6 +32,7 @@ VERIFICATION - the reason this is trustworthy rather than merely plausible
   3. build_pb.py re-verifies string literals and code structure afterwards, and check_pb.py
      compiles the result. A rename that produced invalid C# cannot reach the artifact.
 """
+import io
 import re
 
 KEYWORDS = set('''abstract as base bool break byte case catch char checked class const continue
@@ -142,11 +143,79 @@ def build_map(targets, present):
     return mapping
 
 
-def apply_map(code, mapping):
-    """Rewrite bare (non-dotted, non-string) occurrences of mapped identifiers."""
+# Members of BCL / SE types that one of OUR classes might also happen to declare. Renaming a
+# name in this set risks rewriting `list.Count` or `sb.Append`, and while the compile gate
+# would catch that, a transform should not lean on the last line of defence for a case it can
+# simply refuse up front.
+BCL_MEMBERS = set("""Count Length Add Remove Clear Contains Item Key Value Keys Values Sort
+ToString Equals GetHashCode GetType Substring IndexOf Trim Split Join Replace StartsWith
+EndsWith Parse TryParse TryGetValue ContainsKey Append AppendLine Max Min Round Abs Floor
+Ceiling Action Func Task Enabled Position Status Mode Target""".split())
+
+_DECL = re.compile(r'\bpublic\s+(?:readonly\s+)?[A-Za-z_][\w<>,\[\]\.\s]*?\s'
+                   r'([A-Za-z_]\w*)\s*(?=[;,=({])')
+
+
+def api_surface(stub_path):
+    """Every member and type name se_stubs.cs declares - the API we must never rewrite."""
+    try:
+        stub = io.open(stub_path, encoding='utf-8').read()
+    except IOError:
+        return set()
+    names = set()
+    for m in re.finditer(r'\b([A-Za-z_]\w*)\s*(?:\(|\{\s*get|\{\s*set|;)', stub):
+        names.add(m.group(1))
+    for m in re.finditer(r'\b(?:class|struct|interface|enum)\s+([A-Za-z_]\w*)', stub):
+        names.add(m.group(1))
+    return names
+
+
+def owned_members(code, api_names):
+    """Names declared as members inside OUR OWN class/struct bodies in the artifact.
+
+    THE OWNERSHIP RULE, which is the entire point of this function. A name may be renamed only
+    if it is declared inside a type THIS FILE defines, and is not part of any API surface we
+    compile against. The artifact contains nothing but IOPM code - the SE interfaces live in
+    se_stubs.cs and the BCL is external - so "declared in a type body here" really does mean
+    "ours". `api_names` is every name se_stubs.cs declares; a collision disqualifies the name
+    outright, which today removes Name, Type, Amount and EntityId.
+
+    Anything missed is simply not renamed, costing characters and nothing else. Anything
+    wrongly included is renamed consistently EVERYWHERE, so it either remains a valid program
+    or fails to compile - and build_pb.py compiles the artifact and deletes it on failure.
+    There is no path from a mistake here to a silently different program: generated names exist
+    nowhere else in the file, so a rename that lands on a framework member can only produce
+    CS1061 or CS0246, never a working call to something else.
+    """
+    members = set()
+    for m in re.finditer(r'\b(?:class|struct)\s+([A-Za-z_]\w*)\s*\{', code):
+        i, depth = m.end(), 1
+        while i < len(code) and depth:
+            if code[i] == '{':
+                depth += 1
+            elif code[i] == '}':
+                depth -= 1
+            i += 1
+        body = code[m.end():i - 1]
+        for d in _DECL.finditer(body):
+            members.add(d.group(1))
+        for d in re.finditer(r',\s*([A-Za-z_]\w*)\s*(?=[,;=])', body):
+            members.add(d.group(1))
+    return set(t for t in members
+               if t not in KEYWORDS and t not in NEVER and t not in BCL_MEMBERS
+               and t not in api_names and len(t) > 2)
+
+
+def apply_map(code, mapping, dotted_too=False):
+    """Rewrite occurrences of mapped identifiers. Never touches string literals.
+
+    dotted_too=False is the ORIGINAL conservative pass: bare occurrences only, so a framework
+    member reached through a dot can never be rewritten. dotted_too=True is used only for names
+    that passed owned_members(), where the dotted occurrence is exactly what we are after.
+    """
     out, last = [], 0
     for s, e, t, dotted in _tokens_outside_strings(code):
-        if dotted or t not in mapping:
+        if (dotted and not dotted_too) or t not in mapping:
             continue
         out.append(code[last:s])
         out.append(mapping[t])
@@ -155,12 +224,26 @@ def apply_map(code, mapping):
     return ''.join(out)
 
 
-def minify(code):
-    """Return (renamed_code, mapping, report). Raises AssertionError if the round trip fails."""
+def minify(code, stub_path=None):
+    """Return (renamed_code, mapping, report). Raises AssertionError if a round trip fails."""
     fields, methods, present = collect_targets(code)
     targets = fields | methods
     mapping = build_map(targets, present)
     renamed = apply_map(code, mapping)
+
+    # --- pass 2: members of OUR OWN types -----------------------------------
+    # A SEPARATE mapping with its own round trip, so the two passes are measured and reasoned
+    # about independently and a failure names which one broke.
+    api = api_surface(stub_path) if stub_path else set()
+    mem_targets = owned_members(renamed, api) - set(mapping.values())
+    mem_map = build_map(mem_targets, set(present) | set(mapping.values()))
+    before_members = len(renamed)
+    renamed2 = apply_map(renamed, mem_map, dotted_too=True)
+    mem_inverse = {v: k for k, v in mem_map.items()}
+    assert len(mem_inverse) == len(mem_map), 'member mapping is not injective'
+    if apply_map(renamed2, mem_inverse, dotted_too=True) != renamed:
+        raise AssertionError('member round trip diverged')
+    member_saved = before_members - len(renamed2)
 
     # --- the proof: inverse must reproduce the original exactly -------------
     inverse = {v: k for k, v in mapping.items()}
@@ -177,5 +260,8 @@ def minify(code):
         'fields': len(fields),
         'methods': len(methods),
         'saved': len(code) - len(renamed),
+        'members': len(mem_targets),
+        'member_saved': member_saved,
     }
-    return renamed, mapping, report
+    mapping.update(mem_map)
+    return renamed2, mapping, report

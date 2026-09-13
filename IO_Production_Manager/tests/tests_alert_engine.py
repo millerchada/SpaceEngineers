@@ -86,18 +86,21 @@ DRIVER = '''
   // effects a real execution would have - WA_WAKE turns the simulated antenna on, WA_REST
   // turns it off - and records the verbs. Keeping the effects trivial is what stops this from
   // becoming a second implementation of the thing it is supposed to be testing.
-  bool simOn, simOwned;
+  bool simOn, simOwned, simRetire;
   int simSends;
   static readonly string[] WAN = new string[] { "none", "send", "wake", "rest", "fail", "drop" };
   string SimTick(bool wakeCfg, bool useAnt, bool usable, bool pending, bool sendOk) {
-    int a = WakeAction(wakeCfg, useAnt, usable, simOn, pending, simOwned);
-    if (a == WA_WAKE) { simOn = true; simOwned = true; }
-    else if (a == WA_REST) { simOn = false; simOwned = false; }
-    else if (a == WA_DROP) { simOwned = false; }
-    else if (a == WA_SEND && sendOk) simSends++;
+    int a = WakeAction(wakeCfg, useAnt, usable, simOn, pending, simOwned, simRetire);
+    if (a == WA_WAKE) { simOn = true; simOwned = true; simRetire = false; }
+    else if (a == WA_REST) { simOn = false; simOwned = false; simRetire = false; }
+    else if (a == WA_DROP) { simOwned = false; simRetire = false; }
+    else if (a == WA_SEND) {
+      if (sendOk) simSends++;
+      else if (simOwned) simRetire = true; // what AlertFlush does on a throwing send
+    }
     return WAN[a];
   }
-  void SimReset(bool on) { simOn = on; simOwned = false; simSends = 0; }
+  void SimReset(bool on) { simOn = on; simOwned = false; simRetire = false; simSends = 0; }
   // One alert pending until it is sent, then nothing.
   string WakeRun(bool startOn, int ticks) {
     SimReset(startOn);
@@ -115,8 +118,8 @@ DRIVER = '''
     for (int i = 0; i < ticks; i++) outp += (outp == "" ? "" : "|") + SimTick(true, true, true, false, true);
     return outp;
   }
-  // Every send throws, so the alert stays pending: it must keep being offered, and the antenna
-  // must stay awake rather than flapping.
+  // Every send throws, so the alert stays pending. The antenna must NOT stay up across the
+  // retries: each failed attempt retires its wake, and the next attempt builds a fresh one.
   string WakeFail(int ticks) {
     SimReset(false);
     string outp = "";
@@ -140,11 +143,31 @@ DRIVER = '''
     outp += "|" + SimTick(true, true, true, true, true);    // free to wake again next time
     return outp;
   }
+  // Every send throws. The wake must be torn down and rebuilt rather than held open, so the
+  // antenna spends most of its time OFF even while the controller keeps failing.
+  string WakeFailRetire(int ticks) {
+    SimReset(false);
+    string outp = "";
+    for (int i = 0; i < ticks; i++) outp += (outp == "" ? "" : "|") + SimTick(true, true, true, true, false);
+    return outp;
+  }
+  // Fail once, then succeed: the failed wake is retired, a fresh one delivers, and it is put
+  // back afterwards rather than left up.
+  string WakeFailThenOk() {
+    SimReset(false);
+    string outp = SimTick(true, true, true, true, false);          // wake
+    outp += "|" + SimTick(true, true, true, true, false);          // send throws -> retire
+    outp += "|" + SimTick(true, true, true, true, true);           // rest
+    outp += "|" + SimTick(true, true, true, true, true);           // wake again
+    outp += "|" + SimTick(true, true, true, true, true);           // send, this time it lands
+    outp += "|" + SimTick(true, true, true, false, true);          // rest
+    return outp + "|" + (simOn ? "ON" : "OFF");
+  }
   // Several pools alerting in the same evaluation: ONE wake, one batch, one restore.
   string WakeBatch(int n) {
     SimReset(false);
     string outp = SimTick(true, true, true, true, true);
-    int a = WakeAction(true, true, true, simOn, true, simOwned);
+    int a = WakeAction(true, true, true, simOn, true, simOwned, simRetire);
     if (a == WA_WAKE) { simOn = true; simOwned = true; }
     int sent = 0;
     if (a == WA_SEND) for (int i = 0; i < n; i++) sent++;
@@ -288,40 +311,50 @@ DRIVER = '''
     Eq("antenna state is NOT a transport verdict", AlertCanSend("DegradedNoAntenna") ? "y" : "n", "n");
 
     Console.WriteLine("-- antenna wake: no pending alert, no block ever moves");
-    EqI("wake off, nothing pending", WakeAction(false, true, true, false, false, false), WA_NONE);
-    EqI("wake ON, nothing pending, antenna off", WakeAction(true, true, true, false, false, false), WA_NONE);
-    EqI("wake ON, nothing pending, antenna on", WakeAction(true, true, true, true, false, false), WA_NONE);
+    EqI("wake off, nothing pending", WakeAction(false, true, true, false, false, false, false), WA_NONE);
+    EqI("wake ON, nothing pending, antenna off", WakeAction(true, true, true, false, false, false, false), WA_NONE);
+    EqI("wake ON, nothing pending, antenna on", WakeAction(true, true, true, true, false, false, false), WA_NONE);
 
     Console.WriteLine("-- antenna wake: when it does not apply, the antenna is untouched");
-    EqI("feature off, alert pending -> send as-is", WakeAction(false, true, true, false, true, false), WA_SEND);
-    EqI("UseAntenna=false, alert pending -> send as-is", WakeAction(true, false, true, false, true, false), WA_SEND);
-    EqI("both off -> send as-is", WakeAction(false, false, false, false, true, false), WA_SEND);
+    EqI("feature off, alert pending -> send as-is", WakeAction(false, true, true, false, true, false, false), WA_SEND);
+    EqI("UseAntenna=false, alert pending -> send as-is", WakeAction(true, false, true, false, true, false, false), WA_SEND);
+    EqI("both off -> send as-is", WakeAction(false, false, false, false, true, false, false), WA_SEND);
 
     Console.WriteLine("-- antenna wake: the happy sequence");
-    EqI("pending + antenna already ON -> send, no toggle", WakeAction(true, true, true, true, true, false), WA_SEND);
-    EqI("pending + antenna OFF -> wake, send nothing yet", WakeAction(true, true, true, false, true, false), WA_WAKE);
-    EqI("next execution, owned + still pending -> send", WakeAction(true, true, true, true, true, true), WA_SEND);
-    EqI("after the send, owned + nothing pending -> restore", WakeAction(true, true, true, true, false, true), WA_REST);
+    EqI("pending + antenna already ON -> send, no toggle", WakeAction(true, true, true, true, true, false, false), WA_SEND);
+    EqI("pending + antenna OFF -> wake, send nothing yet", WakeAction(true, true, true, false, true, false, false), WA_WAKE);
+    EqI("next execution, owned + still pending -> send", WakeAction(true, true, true, true, true, true, false), WA_SEND);
+    EqI("after the send, owned + nothing pending -> restore", WakeAction(true, true, true, true, false, true, false), WA_REST);
 
     Console.WriteLine("-- antenna wake: fail closed");
-    EqI("configured antenna missing -> FAIL, alert stays pending", WakeAction(true, true, false, false, true, false), WA_FAIL);
-    EqI("duplicate names -> FAIL (same unusable verdict)", WakeAction(true, true, false, true, true, false), WA_FAIL);
-    EqI("  ... and FAIL is not SEND", WakeAction(true, true, false, false, true, false) == WA_SEND ? 1 : 0, 0);
+    EqI("configured antenna missing -> FAIL, alert stays pending", WakeAction(true, true, false, false, true, false, false), WA_FAIL);
+    EqI("duplicate names -> FAIL (same unusable verdict)", WakeAction(true, true, false, true, true, false, false), WA_FAIL);
+    EqI("  ... and FAIL is not SEND", WakeAction(true, true, false, false, true, false, false) == WA_SEND ? 1 : 0, 0);
 
     Console.WriteLine("-- antenna wake: we only ever undo our own change");
-    EqI("owned, feature switched off mid-wake -> restore", WakeAction(false, true, true, true, true, true), WA_REST);
-    EqI("owned, UseAntenna switched off mid-wake -> restore", WakeAction(true, false, true, true, true, true), WA_REST);
-    EqI("owned, antenna vanished/renamed -> restore", WakeAction(true, true, false, true, true, true), WA_REST);
-    EqI("owned, player switched it off -> let go, do not re-assert", WakeAction(true, true, true, false, true, true), WA_DROP);
-    EqI("NOT owned, antenna on, nothing pending -> never restore", WakeAction(true, true, true, true, false, false), WA_NONE);
+    EqI("owned, feature switched off mid-wake -> restore", WakeAction(false, true, true, true, true, true, false), WA_REST);
+    EqI("owned, UseAntenna switched off mid-wake -> restore", WakeAction(true, false, true, true, true, true, false), WA_REST);
+    EqI("owned, antenna vanished/renamed -> restore", WakeAction(true, true, false, true, true, true, false), WA_REST);
+    EqI("owned, player switched it off -> let go, do not re-assert", WakeAction(true, true, true, false, true, true, false), WA_DROP);
+    EqI("NOT owned, antenna on, nothing pending -> never restore", WakeAction(true, true, true, true, false, false, false), WA_NONE);
 
     Console.WriteLine("-- antenna wake: full sequences, driven through the shipped decision");
     Eq("OFF -> wake, send, restore, idle", WakeRun(false, 5), "wake|send|rest|none|none");
     Eq("already ON -> send immediately, never restored", WakeRun(true, 5), "send|none|none|none|none");
     Eq("no alert at all -> the antenna is never touched", WakeIdle(false, 4), "none|none|none|none");
-    Eq("send keeps failing -> re-sent, stays awake, never stranded", WakeFail(4), "wake|send|send|send");
+    Eq("send keeps failing -> the wake is retired, not held open", WakeFail(4), "wake|send|rest|wake");
     Eq("  ... and the antenna is left OFF once the alert clears", WakeFailThenClear(), "wake|send|rest|OFF");
     Eq("player kills the antenna mid-sequence", WakePlayerOff(), "wake|drop|wake");
+
+    Console.WriteLine("-- antenna wake: a failed send retires the wake, it does not camp on it");
+    EqI("owned, send failed, still pending -> restore first", WakeAction(true, true, true, true, true, true, true), WA_REST);
+    EqI("  ... even with nothing pending", WakeAction(true, true, true, true, false, true, true), WA_REST);
+    EqI("retire is irrelevant when we own nothing", WakeAction(true, true, true, false, true, false, true), WA_WAKE);
+    Eq("a throwing controller cannot camp on the antenna",
+       WakeFailRetire(9), "wake|send|rest|wake|send|rest|wake|send|rest");
+    EqI("  ... and the antenna is OFF at the end", simOn ? 1 : 0, 0);
+    Eq("a send that succeeds after a failure still restores once",
+       WakeFailThenOk(), "wake|send|rest|wake|send|rest|OFF");
 
     Console.WriteLine("-- antenna wake: batching");
     Eq("three alerts in one evaluation wake the antenna once", WakeBatch(3), "wake|send3|rest");

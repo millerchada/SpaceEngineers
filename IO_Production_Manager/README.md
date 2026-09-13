@@ -41,15 +41,41 @@ python ../../tools/build_pb.py IO_Production_Manager_v2.4.40.cs
 # -> IO_Production_Manager_v2.4.40.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.40: source 176,230 -> artifact **96,801** chars (**3,199** headroom).
-v2.4.39: source 151,049 -> artifact 86,828 chars (13,172 headroom).
+v2.4.40: source 179,526 -> artifact **87,248** chars (**12,752** headroom).
+v2.4.39: source 151,049 -> artifact 78,188 chars (21,812 headroom).
+
+Both artifacts shrank in 2.4.40 without a line of logic changing, because the
+**transform** got better (see below). The v2.4.39 figure of 86,828 quoted in
+older notes was correct for the old transform; rebuilding that unchanged source
+today produces 78,188. The source is what is immutable, not the artifact — and
+`build_pb.py` is deterministic, so either number is reproducible from its own
+tooling.
 
 Comments and indentation cost ~20,000 characters and mean nothing at runtime,
 but stripping them from the source would destroy the documentation that keeps
 this maintainable — so we keep both. `build_pb.py` refuses to write the
 artifact unless every string literal survives byte-identical, code-context
-`{}()[];` counts match the source, and the output is stable under a second
-pass.
+`{}()[];` counts match the source, the output is stable under a second pass,
+**and the artifact itself compiles**.
+
+Four transforms run, in this order, each measured separately and reported on
+every build:
+
+| Pass | v2.4.40 saving | What it does |
+|---|---|---|
+| comments + indentation | ~74,000 | `//` comments, leading whitespace, blank lines |
+| identifier shortening | 9,879 | our own `_fields` and method names |
+| own-type member shortening | 3,396 | members of types **this file defines** (2.4.40+) |
+| space tightening | 6,517 | spaces that provably cannot separate two tokens (2.4.40+) |
+
+Newlines are still kept. Packing them to a 200-character line width was measured
+at **1,985 characters** and **not taken**: in-game compile errors are located by
+line, and 1,985 characters is not worth making every one of them ambiguous. See
+`tools/profile_pb.py` for the full character profile.
+
+The two new passes have their own suite, `tests/tests_minify.py`, which is mostly
+negative controls — the load-bearing one proves a framework member stays
+unrenameable *even when one of our own classes declares the same name*.
 
 ## Block tags
 
@@ -648,12 +674,20 @@ An antenna that was **already on** is never switched off. Ownership is explicit:
 | alerting switched off entirely mid-wake | restores first |
 | transport goes down mid-wake | restores — nothing can be sent, so nothing needs the antenna |
 | the restore itself throws | keeps ownership *and* the marker, and retries next evaluation |
+| a send throws under our wake | the wake is **retired** — antenna back down, and any retry builds a fresh sequence |
 
 If the wake is configured but unusable — name empty, antenna missing, or two
 blocks sharing the name — IOPM **fails closed**: nothing is sent, nothing is
 marked announced, the transition stays pending, `Blocked` increments and
 `WakeState=Error` says which of the three it was. It does not fall back to some
 other antenna, and it does not send hopefully into an antenna that is off.
+
+A failed send never leaves the antenna up for an open-ended run of retries. The
+next evaluation after a throwing send tears the wake down first — never in the
+same execution as a successful send, which would race the very boundary the
+wait exists to create — and a later retry starts a new sequence. A controller
+that keeps throwing therefore leaves the antenna **off** most of the time
+instead of powering it indefinitely.
 
 #### Restart safety — the one thing that justified touching `Storage`
 
@@ -662,11 +696,31 @@ world reloads, or the server restarts **between enabling the antenna and
 switching it back off**, nothing in RAM remembers IOPM owes a restore — and your
 antenna is left on, by IOPM, forever.
 
-So `Storage` carries one string: the name of the antenna IOPM currently owns,
-and nothing else. Not the alert engine, not the state machine, not history. The
-first evaluation after a load reads it, switches that antenna off, and clears it
-— **before** the `Enabled=false` gate, so a stranded antenna is released even if
-alerting has since been turned off.
+So `Storage` carries one number: the **`EntityId`** of the antenna IOPM
+currently owns, and nothing else. Not the alert engine, not the state machine,
+not history. The configured *name* selects the antenna in the first place; the
+moment IOPM takes ownership it tracks the block by id, because a name can be
+edited and an id cannot.
+
+Recovery runs from **`Main()`**, on every execution, outside every gate there is
+— not from the alert phase. The reason is blunt: no cycle starts when
+`[General] Enabled=false`, so recovery reached only through the alert phase could
+never run on a base whose IOPM had been switched off, and an antenna IOPM powered
+up would stay up indefinitely. Whether you have since disabled IOPM, disabled
+alerts or disabled the wake feature has no bearing on IOPM's obligation to put
+back a block it switched on.
+
+**The one unavoidable boundary:** if the programmable block itself is off or not
+executing, no script can restore anything. Recovery then happens on the first
+execution after the PB runs again, which is the earliest moment any code of ours
+exists.
+
+**The marker is cleared only after the restore actually succeeds.** If the write
+throws, the marker is kept, the failure is reported, and it is retried on a later
+execution — and across another restart. Recovery is not one-shot when the restore
+itself failed. The only other way the marker clears is a terminal condition where
+restoration is provably unnecessary: the block no longer resolves, is not a radio
+antenna, or is no longer on this construct.
 
 The marker is written **before** `Enabled = true`, never after. An interruption
 between the two then leaves a stale marker and an antenna that is still off,
@@ -674,12 +728,11 @@ which recovery simply clears. The other order strands the block. `Save()` remain
 empty; this is a direct assignment, not a save hook, so it survives a crash that
 never calls `Save()`.
 
-One honest limitation: if the antenna is renamed or duplicated between the
-interruption and the restart, recovery cannot identify it, so it clears the
-marker and says so in `WakeNote` rather than switching off a block it cannot
-confirm. And if *you* deliberately turned that antenna on during the outage,
-recovery will turn it off once — the window is the time between load and the
-first cycle, and the alternative is a block IOPM strands on indefinitely.
+Renaming the antenna during the outage used to defeat recovery; keying on
+`EntityId` removes that limitation entirely. One honest limitation remains: if
+*you* deliberately turned that antenna on during the outage, recovery turns it
+off once. The window is load → first execution, and the alternative is a block
+IOPM strands on forever.
 
 #### Wake diagnostics
 

@@ -40,6 +40,63 @@ import os
 STRUCTURAL = '{}()[];'
 
 
+def here_dir():
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def tighten(code):
+    """Remove the spaces that provably cannot be separating two tokens.
+
+    scan() collapses runs of whitespace to ONE space but never removes that space, so the
+    artifact carries a space in `if (x) {` , `int i = 0;` , `a + b` and thousands more where
+    the lexer does not need one. Measured on v2.4.40 that is 6,517 characters - more than the
+    newlines this tool deliberately keeps, and it costs no readability anywhere, because the
+    SOURCE is untouched.
+
+    THE SAFETY RULE, and it is the whole argument: two adjacent tokens can only merge into a
+    different token if BOTH sides are word characters (`int x` -> `intx`) or BOTH sides are
+    punctuation (`a - -1` -> `a--1`, `/` `/` -> `//`). So a space is removed only when exactly
+    ONE side is a word character and the other is punctuation - a case in which no C# token
+    pair can possibly join. Both-word and both-punctuation spaces are kept, conservatively,
+    even though many of those would also be safe.
+
+    String and char literals are copied verbatim; nothing inside them is examined or altered.
+    The transform is idempotent, so the artifact remains stable under a second pass, and
+    build_pb re-verifies literals, code structure and a real compile afterwards.
+    """
+    out = []
+    i, n = 0, len(code)
+
+    def isword(ch):
+        return ch.isalnum() or ch == '_'
+
+    while i < n:
+        c = code[i]
+        if c == '"' or c == "'":
+            j = i + 1
+            while j < n:
+                if code[j] == chr(92):
+                    j += 2
+                    continue
+                if code[j] == c:
+                    j += 1
+                    break
+                j += 1
+            out.append(code[i:j])
+            i = j
+            continue
+        if c == ' ':
+            prev = out[-1][-1] if (out and out[-1]) else chr(10)
+            nxt = code[i + 1] if i + 1 < n else chr(10)
+            if isword(prev) == isword(nxt):
+                out.append(c)          # both words, or both punctuation: keep it
+            i += 1
+            continue
+        out.append(c)
+        i += 1
+    return ''.join(out)
+
+
 def scan(src):
     """Return (stripped_text, string_literals, structural_counts).
 
@@ -146,8 +203,21 @@ def main():
     # applying the inverse mapping and requiring the original back byte for byte; the literal
     # and structure checks below then re-verify against the ORIGINAL source, and check_pb.py
     # compiles the result. See minify_names.py for why each exclusion exists.
-    renamed, mapping, mreport = minify_names.minify(out)
+    renamed, mapping, mreport = minify_names.minify(
+        out, stub_path=os.path.join(here_dir(), 'se_stubs.cs'))
     out = renamed
+
+    # --- space tightening ------------------------------------------------------
+    # A preprocessor directive is line-oriented and would be corrupted by anything that moves
+    # its tokens around. There are none in this project and there is no reason to add one, but
+    # a transform that would silently break them must say so rather than find out in the game.
+    for ln in out.split(chr(10)):
+        if ln.lstrip().startswith('#'):
+            raise SystemExit('ERROR: preprocessor directive found (%r); tighten() is not safe '
+                             'for line-oriented directives' % ln[:40])
+    before_tighten = len(out)
+    out = tighten(out)
+    tightened = before_tighten - len(out)
 
     # --- verification: refuse to write a suspect artifact ---------------------
     problems = []
@@ -178,6 +248,9 @@ def main():
     print('code structure: ' + '  '.join('%s=%d' % (c, src_struct[c]) for c in STRUCTURAL))
     print('identifiers shortened: %d fields + %d methods, saved %d chars'
           % (mreport['fields'], mreport['methods'], mreport['saved']))
+    print('own-type members shortened: %d names, saved %d chars'
+          % (mreport['members'], mreport['member_saved']))
+    print('spaces tightened: saved %d chars' % tightened)
     print('PB ceiling headroom: %d chars' % (100000 - len(out)))
 
     if problems:

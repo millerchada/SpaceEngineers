@@ -60,11 +60,9 @@ at terminal properties. Capture the exact compiler message into
 
 ## Probe 1 — transport, before any threshold is touched
 
-Paste `IO_Production_Manager_v2.4.40.min.cs` (96,801 chars) into the PB.
-
-**Do not start this UAT yet.** At 96,801 chars the candidate leaves only 3,199
-characters of PB headroom, and that is a decision to take deliberately rather
-than discover at the keyboard. See the v2.4.40 antenna-wake CHANGELOG entry.
+Paste `IO_Production_Manager_v2.4.40.min.cs` (**87,248 chars**, 12,752 headroom)
+into the PB. The earlier size objection is resolved — a dedicated build-time
+reclamation pass reclaimed 9,913 characters without touching runtime logic.
 
 Leave `[Alerts] Enabled=false` for the first recompile and confirm the script
 still runs exactly as v2.4.39 did — `[IOPM.Status] State=Running`, sorting and
@@ -399,6 +397,30 @@ Worth trying the harsher version too if you can: save and reload the world while
 `WakeOwned=True`. Same expected outcome — the marker is written to `Storage`
 *before* the antenna is enabled, so it survives anything that does not call
 `Save()`.
+
+**4.8b — recovery works with IOPM switched off.** Repeat step 3, but before
+recompiling also set `[General] Enabled=false`. No IOPM cycle runs at all in that
+state. The antenna must **still** be switched back off, because recovery runs
+from `Main()` outside every config gate. Recovery also survives
+`[Alerts] Enabled=false` and `WakeAntennaForAlerts=false`.
+
+The only case where nothing can happen is the programmable block itself being
+off — no script can run then. It recovers on the first execution after you switch
+the PB back on; confirm that too.
+
+**4.8c — a rename during the outage no longer defeats recovery.** Repeat step 3,
+and while the PB is stopped, **rename** `Compact Antenna Moon` to something else.
+Expected: it is still switched off, because ownership is persisted as the block's
+`EntityId`, not its name. `WakeNote` should read `restored antenna <id> after an
+interrupted wake`.
+
+**4.9 — a failing send does not hold the antenna up.** With the antenna off and
+an alert pending, make sends fail repeatedly if you can contrive it (toggling the
+controller during the send window). Expected: the antenna is not left powered
+across the retries — each failed attempt retires its wake and the next attempt
+builds a fresh one, so `WakeState` cycles rather than sitting in `Ready`, and the
+antenna spends most of its time **off**. `Alerts` must not increment; the
+transition must still be pending.
 
 **If the antenna is ever left on after a restart with no alert pending, that is a
 defect — record it and stop.** Stranding a player's block is the one outcome

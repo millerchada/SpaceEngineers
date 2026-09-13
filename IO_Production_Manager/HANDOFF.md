@@ -11,11 +11,17 @@ repo at this commit, not recalled.
 > v2.4.39 remains the accepted runtime release and the thing to paste. The
 > v2.4.40 scope, API-verification findings and open UAT plan are in
 > `CHANGELOG.md` and `uat/v2.4.40/plan.md`. One deviation is recorded there: the
-> v2.4.40 artifact is **96,801 chars (3,199 headroom)** after the opt-in antenna
-> wake feature. That is 3.2% of the PB ceiling and **needs a decision before live
-> UAT** — see the antenna-wake CHANGELOG entry, which lays out three options and
-> a recommendation. Review of `a0d861b` found four alert-state defects, all
-> corrected; the CHANGELOG correction entry is that record.
+> v2.4.40 artifact is **87,248 chars (12,752 headroom)** after a dedicated
+> build-time reclamation pass — space tightening and own-type member shortening,
+> no runtime logic touched. The earlier budget objection is resolved. Three
+> rounds of review corrections are recorded in CHANGELOG (four alert-state
+> defects, then three antenna-wake defects); all are fixed and gated.
+>
+> **Note on artifact sizes in this file:** the transform improved in 2.4.40, so
+> rebuilding the unchanged v2.4.39 source now produces **78,188** chars, not the
+> 86,828 below. The source is immutable; the artifact is a deterministic function
+> of source plus tooling, and the tooling got better. What is running in-game is
+> still the 86,828 paste and is still valid.
 > Recommended next work (below) is unchanged and none of it has been started.
 
 ## Current release

@@ -28,6 +28,266 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.40 — antenna-wake corrections, then a dedicated character-budget pass
+
+**Still the candidate. Live UAT still deferred — Chad is away from the base.**
+Two phases, kept strictly in that order: correctness first, then size, so no
+reclamation decision was ever taken against code that was about to change.
+
+---
+
+# Phase A — three correctness defects in the accepted wake architecture
+
+### A1. Restart recovery could not run on a base with IOPM switched off
+
+`WakeRecover()` was reached only through `AlertEvaluation()`. But **no cycle
+begins when `[General] Enabled=false`** — so on a base whose IOPM had been turned
+off, an interrupted wake would never be recovered and the player's antenna would
+stay on indefinitely. The feature's core promise failed in exactly the situation
+where nobody was watching.
+
+Recovery now runs from **`Main()`**, before every gate:
+
+    PB executing + persisted wake ownership -> recovery attempted
+      regardless of [General] Enabled, [Alerts] Enabled, WakeAntennaForAlerts
+
+It reads no config and starts no cycle, so the config-snapshot rule is untouched.
+
+**The one unavoidable boundary, documented rather than hidden:** if the
+programmable block itself is disabled or not executing, no script can restore
+anything. Recovery happens on the first execution after the PB resumes — the
+earliest moment any code of ours exists.
+
+Caught by two invariants (`WakeRecover()` is called from `Main()`, and before
+anything reads config) and a negative control that moves the call back into the
+alert phase and must be rejected.
+
+### A2. Recovery cleared the ownership marker before the restore succeeded
+
+`Storage` was cleared *before* `antenna.Enabled = false` was attempted. A throwing
+write then destroyed the only record that IOPM owed a restore — permanently, and
+across any further restart. One-shot recovery, when the one shot failed.
+
+Corrected invariant:
+
+> Persisted wake ownership is cleared only **after** restoration succeeds, or at
+> a deliberately defined terminal condition where restoration is provably
+> unnecessary.
+
+There are exactly three terminal conditions, all of which mean there is nothing
+left to restore: the marker is unreadable, the block no longer resolves / is not
+a radio antenna / is not on this construct, and the enable itself threw so the
+antenna was never switched on. Everything else keeps the marker and retries.
+
+Negative controls: one mutant clears the marker before the restore, another makes
+a failed restore give up on it. Both rejected.
+
+### A3. A failed send left the antenna awake for open-ended retries
+
+The old loop was `wake → send throws → stay awake → retry → throws → stay
+awake → …`. A controller that kept failing would keep the player's antenna
+powered indefinitely — the feature turning into the exact opposite of what it
+promises.
+
+A send that throws while IOPM holds the wake now **retires** it:
+
+    wake -> wait boundary -> send -> failure
+      -> no AlertCommit
+      -> restore the antenna
+      -> transition stays pending
+      -> a future retry builds a NEW wake sequence
+
+The teardown happens on the **next** execution, never the same one, because some
+of the batch may have gone out and cutting the antenna in the same execution as a
+successful send is precisely the race the wait boundary exists to avoid. Proven
+by sequence test: nine ticks of a throwing controller produce
+`wake|send|rest|wake|send|rest|wake|send|rest` and end with the antenna **off**.
+
+### A4. Ownership is persisted as `EntityId`, not as a name — adopted
+
+Verified against the shipped assemblies before use:
+`Sandbox.ModAPI.Ingame.IMyGridTerminalSystem.GetBlockWithId(long)` exists and
+returns `IMyTerminalBlock`. Added to `se_stubs.cs` with that provenance recorded.
+
+The configured **name** still performs initial selection, exactly as before. The
+moment IOPM takes ownership it stores the antenna's `EntityId`, and recovery
+resolves by id, requires `IMyRadioAntenna`, requires the same construct, restores
+`Enabled=false`, and clears the marker only on success.
+
+This **removes the rename-during-outage limitation entirely** — previously
+documented as a known hole — and makes recovery simpler rather than more complex.
+
+### A5. Stale wording
+
+The `PHASE_ALERTS` switch comment still called the phase read-only, and the file
+header still claimed the alert phase mutated no block setting. Both now state the
+narrowed contract: no queue, no inventory, and **`Enabled` on the configured
+alert antenna only**.
+
+### Phase A results
+
+    tests_alert_engine     118 checks (was 112)      PASS
+    tests_invariants        43 checks + 17 controls  PASS  (was 36 + 13)
+    full release gate                                PASS
+    v2.4.39                                          unchanged, gate PASS
+
+    corrected artifact, before any reclamation:  97,161 chars / 2,839 headroom
+
+One existing test had to change: `send keeps failing -> stays awake` codified the
+A3 defect and now reads `send keeps failing -> the wake is retired, not held
+open`.
+
+---
+
+# Phase B — character-budget reclamation
+
+Started only once Phase A was green. **No runtime logic was changed, no
+diagnostic was removed, and no test was weakened.** Every character came from the
+build-time transform.
+
+### B1. The profile, measured first
+
+New tool `tools/profile_pb.py` splits every artifact character into exactly one
+bucket and checks the buckets sum to the file size.
+
+| bucket | chars | share |
+|---|---|---|
+| identifiers | 39,939 | 41.1% |
+| strings | 16,533 | 17.0% |
+| punctuation | 14,946 | 15.4% |
+| keywords | 12,664 | 13.0% |
+| **spaces** | **9,683** | **10.0%** |
+| newlines | 2,547 | 2.6% |
+| numbers | 849 | 0.9% |
+
+The surprise is the one that mattered: **spaces are four times the newline
+budget**, and the newline question everyone reaches for first is the smallest
+lever on the board. Intuition had the two backwards.
+
+### B2a. Space tightening — **6,517 chars**
+
+`scan()` collapsed runs of whitespace to one space but never removed that space,
+so the artifact carried one in `if (x) {`, `int i = 0;`, `a + b` and thousands
+more.
+
+The safety rule is the whole argument: two adjacent tokens can only merge into a
+*different* token when both sides are word characters (`int x` → `intx`) or both
+sides are punctuation (`a - -1` → `a--1`, `/ /` → `//`). So a space is removed
+only when exactly **one** side is a word character — a case in which no C# token
+pair can possibly join. Both-word and both-punctuation spaces are kept, leaving
+roughly 1,500 provably-safe characters on the table deliberately.
+
+Measured: 1,668 both-word, 1,498 both-punctuation, **6,517 mixed** — and 6,517 is
+exactly what it saved.
+
+### B2b. Own-type member shortening — **3,396 chars**
+
+`minify_names.py` has always refused any identifier ever reached through a `.`,
+which correctly protects `ini.Get` and `list.Count` but also left every field on
+our own classes at full length: `_cfg.AllowSurvivalKitFallback`, `MH.StallCycles`,
+`PRec.BlockedBy`.
+
+**The ownership rule**, which is what makes this defensible rather than a blind
+`.Foo → .a`: a name may be renamed only if it is declared inside a type **this
+file defines**, and is not in any API surface we compile against. The artifact
+contains nothing but IOPM code — SE interfaces live in `se_stubs.cs`, the BCL is
+external — so "declared in a type body here" really does mean ours. Every name
+`se_stubs.cs` declares is excluded (that removes `Name`, `Type`, `Amount` and
+`EntityId` today), as is a curated BCL list (`Count`, `Append`, `Enabled`, …).
+
+And the backstop is stronger than it first looks: generated names (`Qa`, `QUe`)
+exist nowhere else in the file, so a rename that landed on a framework member can
+only produce CS1061 or CS0246 — never a working call to something else. There is
+no path from a mistake here to a silently different program, and `build_pb.py`
+compiles the artifact and deletes it on failure.
+
+90 member names renamed, own round-trip inverse check, own reported saving.
+
+### B2c. Newline packing — **1,985 chars, measured and NOT taken**
+
+Packing to a 200-character line width would reduce 2,547 lines to 562 and
+recover 1,985 characters.
+
+**Declined.** In-game compile errors are located by line number, and 1,985
+characters is not worth making every future one ambiguous — even with a sidecar
+map, which adds a lookup step to every diagnosis forever. The two passes above
+delivered 9,913 characters without costing anything at all, which made this
+trade unnecessary. The measurement is recorded so the option can be reconsidered
+on evidence rather than re-litigated from scratch.
+
+### B2d. Locals and parameters — not attempted
+
+Per instruction, and the profile agrees it would be the wrong next step anyway:
+the expensive locals are `alias` (630 chars) and `ini` (357), and reaching them
+safely needs a scope-aware transform whose risk is out of proportion to the
+remaining need.
+
+### B3. Runtime changes — **none were necessary**
+
+The build-time work overshot the preferred target, so no runtime code was
+touched. The planner, sorting, docking, catalog, diagnostics and tests are all
+byte-for-byte as Phase A left them.
+
+### New transform safety suite
+
+`tests/tests_minify.py` — **55 checks**, mostly negative controls, wired into the
+release gate like every other suite:
+
+- the API surface extracted from `se_stubs.cs` is non-trivial and contains the
+  members that must never move (`CustomName`, `AddQueueItem`, `SendMessage`, …)
+- **the load-bearing one:** a poisoned input in which one of *our* classes
+  declares `CustomName`, `Count` and `EntityId` — all three must still be refused,
+  which proves the exclusion is doing the work rather than the mere absence of a
+  collision
+- no framework member appears in the rename map, and every API name the source
+  actually uses is still physically present in the artifact
+- two runs produce identical output and identical mappings (determinism)
+- the mapping is injective and collides with nothing pre-existing
+- `tighten()` refuses `- -`, `+ +` and `/ /`, keeps required spaces, is
+  idempotent, and leaves literal contents byte-identical
+- literals and code structure survive rename + tighten together
+
+### Phase B results
+
+    pre-reclamation (Phase A)      97,161 chars    2,839 headroom
+      space tightening             -6,517
+      own-type members             -3,396
+      newline packing              (-1,985 measured, declined)
+    ------------------------------------------------------------
+    final                          87,248 chars   12,752 headroom
+
+    minimum target   <= 92,000 / >= 8,000     MET
+    preferred target <= 90,000 / >= 10,000    MET
+
+    tests_alert_engine        118 checks                 PASS
+    tests_canonicalize_stock   52 checks                 PASS
+    tests_invariants           43 checks + 17 controls   PASS
+    tests_minify               55 checks                 PASS
+    tests_yield_math                                     PASS
+    release gate, v2.4.40                                PASS
+    release gate, v2.4.39                                PASS
+
+### A side effect worth stating plainly
+
+The transform improvements apply to **every** source, so rebuilding the unchanged
+v2.4.39 now yields **78,188** chars rather than the 86,828 recorded in older
+notes. The source is what is immutable; the artifact is a deterministic function
+of source + tooling, and the tooling improved. The v2.4.39 artifact already
+pasted in-game is still valid and still what is running.
+
+### Recommendation
+
+**Yes — this candidate is now suitable for live UAT**, subject to the gates the
+repo cannot close on its own. The budget objection that blocked it is resolved
+with 12,752 characters of headroom, which leaves real room for the planned
+production/resource/loadout alerts rather than none.
+
+Still outstanding, unchanged: **probe 1.1**, whitelist acceptance of
+`Components.TryGet`, which only an in-game compile can answer; and **probe 4.8**,
+recompiling mid-wake to prove the antenna cannot be stranded on — now stronger,
+because recovery keys on `EntityId` and runs from `Main()` outside every config
+gate.
+
 ## 2.4.40 — antenna wake for Broadcast Controller alerts (opt-in)
 
 **Still the candidate. NOT ready for live UAT — see the character budget below,

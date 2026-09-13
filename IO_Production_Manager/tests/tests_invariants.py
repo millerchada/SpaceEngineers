@@ -119,7 +119,7 @@ def run(src, report):
     ens = hits(r'\.Enabled\s*=[^=]', region)
     allowed = ('_wkAnt.Enabled = true;',      # wake
                'if (_wkOwn != null) _wkOwn.Enabled = false;',  # restore what we woke
-               'try { a.Enabled = false; _wkErr = ')           # restart recovery
+               'try { a.Enabled = false; }')                  # restart recovery
     check('every Enabled write is one of the three authorised ones',
           all(any(t.startswith(a) or a in t for a in allowed) for t in ens), str(ens))
     check('there are exactly three of them', len(ens) == 3, str(ens))
@@ -128,10 +128,34 @@ def run(src, report):
     check('a restore failure keeps ownership so it is retried',
           bool(m) and '_wkState = WK_ERR; _wkErr = "restore failed"; return;' in m.group(0))
     check('the wake marker is written BEFORE the antenna is enabled',
-          bool(m) and m.group(0).index('Storage = _cfg.AlertAntenna;')
-                      < m.group(0).index('_wkAnt.Enabled = true;'))
+          bool(m) and 'Storage = _wkAnt.EntityId.ToString();' in m.group(0)
+          and m.group(0).find('Storage = _wkAnt.EntityId.ToString();')
+              < m.group(0).find('_wkAnt.Enabled = true;'))
     check('an alert must be pending before any wake decision can move a block',
           bool(m) and 'if (!pending) return WA_NONE;' in m.group(0))
+    check('a failed send retires the wake instead of camping on the antenna',
+          bool(m) and 'if (retire) return WA_REST;' in m.group(0)
+          and 'if (failed) _wkRetire = true;' in m.group(0))
+
+    # RESTART RECOVERY. Three separate rules, because the three ways it went wrong are
+    # independent: it was unreachable, it gave up too early, and it keyed on a mutable name.
+    report('-- interrupted-wake recovery')
+    mm = re.search(r'public void Main\(.*?\n}', src, re.S)
+    mainbody = mm.group(0) if mm else ''
+    check('recovery is called from Main(), not only from the alert phase',
+          'WakeRecover();' in mainbody)
+    check('  ... before anything reads config or starts a cycle',
+          0 <= mainbody.find('WakeRecover();') < (mainbody.find('GeneralEnabled')
+                                                  if 'GeneralEnabled' in mainbody else -1))
+    check('recovery has exactly one call site', len(hits(r'WakeRecover\(\);', lines)) == 1)
+    check('a failed restore KEEPS the marker rather than clearing it',
+          bool(m) and '_wkErr = "interrupted wake: restore of " + id + " failed, marker '
+                      'retained";' in m.group(0).replace(chr(10) + '      ', ' '))
+    check('recovery resolves by EntityId, which a rename cannot defeat',
+          bool(m) and 'GridTerminalSystem.GetBlockWithId(id)' in m.group(0)
+          and 'Storage = _wkAnt.EntityId.ToString();' in m.group(0))
+    check('a recovered block must still be a radio antenna on this construct',
+          bool(m) and 'if (a == null || !a.IsSameConstructAs(Me)) {' in m.group(0))
 
     # The rules below are the ones the v2.4.40 review found broken. Each names an EXACT line,
     # because each defect was wrong by a single token and a looser pattern would have matched
@@ -152,7 +176,7 @@ def run(src, report):
           'DegradedNoAntenna' not in body)
     check('Storage carries the wake marker and nothing else',
           len(hits(r'Storage\s*=', lines)) == len(hits(r'Storage\s*=', region))
-          and len(hits(r'Storage\s*=', region)) == 5)
+          and len(hits(r'Storage\s*=', region)) == 7)
     check('Save() still persists nothing', 'public void Save() { }' in src)
 
     report('-- the extraction markers tests_alert_engine.py depends on')
@@ -206,8 +230,18 @@ MUTANTS = [
      lambda s: s.replace('  if (!pending) return WA_NONE;',
                          '  if (!pending) return antEnabled ? WA_NONE : WA_WAKE;', 1)),
     ('enabling the antenna before recording that IOPM owns it',
-     lambda s: s.replace('    Storage = _cfg.AlertAntenna;' + chr(10) + '    _wkAnt.Enabled = true;',
-                         '    _wkAnt.Enabled = true;' + chr(10) + '    Storage = _cfg.AlertAntenna;', 1)),
+     lambda s: s.replace('    Storage = _wkAnt.EntityId.ToString();' + chr(10) + '    _wkAnt.Enabled = true;',
+                         '    _wkAnt.Enabled = true;' + chr(10) + '    Storage = _wkAnt.EntityId.ToString();', 1)),
+    ('recovery buried back inside the alert phase',
+     lambda s: s.replace('  WakeRecover();' + chr(10), '', 1)),
+    ('recovery clearing the marker BEFORE the restore succeeds',
+     lambda s: s.replace('  try { a.Enabled = false; }',
+                         '  Storage = ""; _wkDone = true;' + chr(10) + '  try { a.Enabled = false; }', 1)),
+    ('a failed restore giving up on the marker',
+     lambda s: s.replace('    _wkErr = "interrupted wake: restore of " + id + " failed, marker retained";',
+                         '    Storage = ""; _wkDone = true;', 1)),
+    ('a failed send camping on the antenna',
+     lambda s: s.replace('    if (retire) return WA_REST;', '', 1)),
     ('a deleted extraction marker',
      lambda s: s.replace('// </alert-engine>', '', 1)),
 ]

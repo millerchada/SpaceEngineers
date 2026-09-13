@@ -211,6 +211,10 @@ namespace Sandbox.ModAPI.Ingame {
     void GetBlocks(List<IMyTerminalBlock> blocks);
     void GetBlocksOfType<T>(List<T> blocks, Func<T, bool> collect = null) where T : class;
     IMyTerminalBlock GetBlockWithName(string name);
+    // Verified against Sandbox.Common.dll: IMyGridTerminalSystem.GetBlockWithId(long) really
+    // does exist on the INGAME interface and returns IMyTerminalBlock. IOPM uses it to resolve
+    // an interrupted antenna wake by EntityId, which a rename cannot defeat.
+    IMyTerminalBlock GetBlockWithId(long id);
   }
 
   public struct MyIniKey { public string Name { get { return null; } } public string Section { get { return null; } } }
