@@ -28,6 +28,131 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.40 — two wake lifecycle defects, and the end of the one-shot latch
+
+**Final repo change before live UAT.** Both defects stranded the player's antenna
+ON with no restart involved, which is the one outcome this feature is not allowed
+to have.
+
+### 1. `[General] Enabled=false` could strand an active wake, in the same runtime
+
+The sequence needed no crash and no reload:
+
+    runtime starts, Storage empty -> WakeRecover() latches _wkDone = true
+    later, WakeOn() writes a marker and switches the antenna on
+    player sets [General] Enabled=false; the config applies at Idle
+    no cycle starts again, so AlertEvaluation() can never call WakeOff()
+    WakeRecover() in Main() returns immediately because _wkDone is already true
+    -> antenna stays on indefinitely
+
+The latch was the cause. `_wkDone` cached a fact ("recovery already ran") that
+stops being true the moment a wake is taken later in the same runtime, and a
+cached fact that can go stale is not state, it is a bug waiting for a trigger.
+
+**`_wkDone` is gone.** Responsibility is now derived from the two things that
+actually mean something, in a pure decision table inside the extracted region:
+
+    WakeServiceAction(owned, generalEnabled, alertsEnabled, wakeCfg)
+      not owned                      -> RECOVER   (Storage, if any, is a previous owner's)
+      owned + all three enabled      -> NONE      (the alert phase owns its lifecycle)
+      owned + any of them disabled   -> RESTORE   (that phase will never run again; Main must)
+
+`Main()` calls this on every execution, **after** the config snapshot applies so
+it sees the setting that has just removed the alert phase, and before the gate
+that decides whether a cycle starts. It starts no cycle and mutates no config, so
+the config-snapshot rule is untouched.
+
+The regression the brief asked for now holds with no restart anywhere:
+
+    wake antenna -> set [General] Enabled=false -> config applies
+      -> antenna restored OFF -> Storage cleared -> no further cycle required
+
+`[Alerts] Enabled=false` and `WakeAntennaForAlerts=false` restore identically.
+
+And the converse matters just as much: an **active** wake must not be re-read as
+an interrupted one and cancelled on the next `Update10`. That is the `not owned`
+row, and it has its own test — four consecutive executions of a healthy wake must
+all return `NONE`.
+
+### 2. A throwing `Enabled = true` no longer destroys the recovery marker
+
+`WakeOn()`'s catch cleared `Storage`, on the assumption that an exception means
+the antenna was never switched on. **The API proves no such thing.** A setter
+that changed state and then threw would leave the antenna on with the only record
+of the obligation deleted.
+
+The catch now leaves the marker alone entirely:
+
+    write EntityId marker
+    attempt Enabled = true
+      succeeds -> normal wake ownership
+      throws   -> ownership NOT taken, no send, no commit, marker RETAINED
+                  -> the next execution sees a marker with no owner
+                  -> recovery forces that exact antenna to Enabled = false
+
+If the antenna never turned on, that restore is harmless. If it did, it is the
+only thing that saves it. And if the `Storage` write itself threw, no marker
+exists and **none is invented** — nothing on the failure path writes one.
+
+One consequence worth naming: a setter that throws every time produces a
+wake-attempt / forced-off pair per cycle rather than a stranded block. That is
+noisy in `WakeNote` and visible in `WakeState=Error`, which is the correct place
+for it to be visible.
+
+### 3. The simpler lifecycle was adopted
+
+Exactly as suggested: `_wkOwn != null` means this runtime intentionally owns an
+active wake; otherwise a non-empty `Storage` is interrupted ownership to recover
+or retry; empty `Storage` is no obligation. No separate boolean. Nothing else in
+the design conflicted with it — the latch was pure accretion.
+
+### 4. Documentation corrections
+
+`uat/v2.4.40/plan.md`:
+
+- **probe 4.8** expected `WakeNote` now reads `restored antenna <EntityId> after
+  an interrupted wake`, matching the code. Ownership is persisted as an id, so
+  the diagnostic names the id, not the configured name.
+- the claim that the marker "survives anything that does not call `Save()`" is
+  **gone**, replaced by the durability table: PB recompile, normal save/reload
+  and normal persisted restart are expected to persist; an abrupt host or process
+  crash before the world persists is **not guaranteed**. UAT is told explicitly
+  not to spend time forcing that case — it is an API boundary, not a defect.
+- **probe 3** no longer calls the alert phase read-only. It states the narrowed
+  invariant: `AlertEvaluation` mutates no queue and no inventory, and may modify
+  only `Enabled` on the explicitly configured alert antenna.
+- new **probe 4.8e**: disable IOPM mid-wake and confirm the antenna still comes
+  back off with no restart and no further cycle — the live form of defect 1.
+
+### Results
+
+    tests_alert_engine        140 checks                  PASS   (was 129)
+    tests_canonicalize_stock   52 checks                  PASS
+    tests_invariants           51 checks + 23 controls    PASS   (was 46 + 19)
+    tests_minify               71 checks                  PASS
+    tests_yield_math                                      PASS
+    release gate, v2.4.40                                 PASS
+    release gate, v2.4.39                                 PASS
+    two independent builds                                BYTE-IDENTICAL
+
+    artifact  88,011 chars    headroom  11,989
+
+Four new negative controls, all rejected: a throwing enable destroying the
+marker; a one-shot latch reintroduced in front of recovery; `Main` never
+restoring a wake whose phase was disabled; and an active wake mistaken for an
+interrupted one. The suites were verified to **fail the previous behaviour** by
+mutating each defect back in — 6 and 8 engine checks fail for the two lifecycle
+rows, and the invariant gate catches all four.
+
+Artifact grew 324 characters, entirely the new decision table and its reasoning.
+No size work was requested or done; the target remains met with room.
+
+### Status
+
+**This is the final repo change before live UAT.** The gates that remain are the
+two only the game can answer: **probe 1.1**, whitelist acceptance of
+`Components.TryGet`, and the mid-wake probes **4.8 / 4.8b / 4.8c / 4.8d / 4.8e**.
+
 ## 2.4.40 — final hardening: durable wake ownership, honest durability, a stricter ownership rule
 
 **Repo-ready for live UAT.** Everything the repository can prove is proven; the

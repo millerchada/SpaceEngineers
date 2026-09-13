@@ -11,11 +11,12 @@ repo at this commit, not recalled.
 > v2.4.39 remains the accepted runtime release and the thing to paste. The
 > v2.4.40 scope, API-verification findings and open UAT plan are in
 > `CHANGELOG.md` and `uat/v2.4.40/plan.md`. One deviation is recorded there: the
-> v2.4.40 is **repo-ready for live UAT** at **87,687 chars (12,313 headroom)** after a dedicated
+> v2.4.40 is **repo-ready for live UAT** at **88,011 chars (11,989 headroom)** after a dedicated
 > build-time reclamation pass — space tightening and own-type member shortening,
 > no runtime logic touched. The earlier budget objection is resolved. Three
 > rounds of review corrections are recorded in CHANGELOG (four alert-state
-> defects, three antenna-wake defects, then three hardening items); all are fixed
+> defects, three antenna-wake defects, three hardening items, then two wake
+> lifecycle defects); all are fixed
 > and gated. Only the in-game probes remain: whitelist acceptance of
 > `Components.TryGet`, and the mid-wake restart probes in `uat/v2.4.40/plan.md`.
 >

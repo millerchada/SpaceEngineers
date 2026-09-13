@@ -185,6 +185,37 @@ DRIVER = '''
     else if (what == "throws") { RecTick(true, true, true, false); RecTick(true, true, true, true); }
     return recLog + (recMark ? "|MARK" : "|CLEAR");
   }
+  // The Main() lifecycle: who is responsible for an active wake this execution, and what
+  // happens to a marker written by an enable that then threw. Both compose the two shipped
+  // decisions rather than re-deciding anything.
+  string LifeRun(string what) {
+    string o = "";
+    if (what == "disable-general") {
+      // wake taken normally, then [General] Enabled=false applies. No cycle will ever start
+      // again, so Main must restore it without one.
+      o += WAN2(WakeServiceAction(true, true, true, true));          // active: phase owns it
+      o += "|" + WAN2(WakeServiceAction(true, false, true, true));   // disabled: Main restores
+      o += "|" + WAN2(WakeServiceAction(false, false, true, true));  // restored: nothing owed
+    } else if (what == "disable-alerts") {
+      o += WAN2(WakeServiceAction(true, true, false, true));
+    } else if (what == "disable-wake") {
+      o += WAN2(WakeServiceAction(true, true, true, false));
+    } else if (what == "steady") {
+      // An ACTIVE wake must not be re-read as an interrupted one on every Update10.
+      for (int i = 0; i < 4; i++) o += (i == 0 ? "" : "|") + WAN2(WakeServiceAction(true, true, true, true));
+    } else if (what == "enable-threw") {
+      // Marker written, Enabled=true threw, so ownership was NOT taken. The next execution
+      // must treat the retained marker as an interrupted wake and force that antenna off.
+      o += WAN2(WakeServiceAction(false, true, true, true));         // no owner -> recover
+      o += "|" + WRN(WakeRecoverAction(true, true, true, true));     // -> force it off
+      o += "|" + WRN(WakeRecoverAction(false, false, false, false)); // marker cleared -> done
+    }
+    return o;
+  }
+  static readonly string[] WSN = new string[] { "none", "restore", "recover" };
+  static readonly string[] WRNN = new string[] { "none", "corrupt", "retry", "restore" };
+  string WAN2(int a) { return WSN[a]; }
+  string WRN(int a) { return WRNN[a]; }
   // Several pools alerting in the same evaluation: ONE wake, one batch, one restore.
   string WakeBatch(int n) {
     SimReset(false);
@@ -390,6 +421,22 @@ DRIVER = '''
     Eq("a wrong-type id is discarded as corrupt", RecRun("wrongtype"), "|corrupt|CLEAR");
     Eq("an unparsable marker is discarded as corrupt", RecRun("unparsable"), "|corrupt|CLEAR");
     Eq("a throwing restore keeps the marker and retries", RecRun("throws"), "|failed|restored|CLEAR");
+
+    Console.WriteLine("-- Main() is the backstop when the alert phase can no longer run");
+    EqI("active wake, everything enabled -> the phase keeps it", WakeServiceAction(true, true, true, true), WS_NONE);
+    EqI("active wake, [General] Enabled=false -> Main restores", WakeServiceAction(true, false, true, true), WS_RESTORE);
+    EqI("active wake, [Alerts] Enabled=false -> Main restores", WakeServiceAction(true, true, false, true), WS_RESTORE);
+    EqI("active wake, wake feature off -> Main restores", WakeServiceAction(true, true, true, false), WS_RESTORE);
+    EqI("no active wake -> the marker is a previous owner's", WakeServiceAction(false, true, true, true), WS_RECOVER);
+    EqI("  ... even with everything disabled", WakeServiceAction(false, false, false, false), WS_RECOVER);
+    Eq("wake, then [General] Enabled=false, restored with no further cycle",
+       LifeRun("disable-general"), "none|restore|recover");
+    Eq("disabling alerts mid-wake also restores", LifeRun("disable-alerts"), "restore");
+    Eq("disabling the wake feature mid-wake also restores", LifeRun("disable-wake"), "restore");
+    Eq("an ACTIVE wake is never re-read as interrupted recovery",
+       LifeRun("steady"), "none|none|none|none");
+    Eq("a throwing enable keeps its marker and the antenna is forced off",
+       LifeRun("enable-threw"), "recover|restore|none");
 
     Console.WriteLine("-- antenna wake: batching");
     Eq("three alerts in one evaluation wake the antenna once", WakeBatch(3), "wake|send3|rest");

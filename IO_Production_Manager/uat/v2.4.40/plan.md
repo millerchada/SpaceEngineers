@@ -388,15 +388,47 @@ deliberate about.
 
 Expected: within a cycle or two of the restart, `Compact Antenna Moon` is
 switched back **off** by itself, and `WakeNote` reads
-`restored Compact Antenna Moon after an interrupted wake`.
+`restored antenna <EntityId> after an interrupted wake` — an **EntityId**, not the
+block's name. Ownership is persisted as the id, so the diagnostic names the id;
+if you want to confirm which block that is, it is the one that just switched off.
 
 Then confirm the marker is not sticky: let a cycle run and check `WakeNote`
 clears on the next wake, and that a normal alert still works.
 
 Worth trying the harsher version too if you can: save and reload the world while
-`WakeOwned=True`. Same expected outcome — the marker is written to `Storage`
-*before* the antenna is enabled, so it survives anything that does not call
-`Save()`.
+`WakeOwned=True`. Same expected outcome.
+
+**What `Storage` actually guarantees**, so you know which failures are in scope
+here and which are not:
+
+| Scenario | Expect the marker to survive? |
+|---|---|
+| PB recompile | yes |
+| normal world save and reload | yes |
+| normal persisted world restart | yes |
+| abrupt host or process crash before the world persists | **not guaranteed** |
+
+`Storage` is persisted through the game's *save* lifecycle; assigning it is not a
+synchronous flush and the PB API establishes no transactional durability. A
+stranded antenna after a hard server kill is therefore an API boundary, not a
+defect to raise — do not spend UAT time trying to force that case. The ordering
+that *is* guaranteed, and worth confirming, is that the marker is written before
+the antenna is enabled, so an interruption between the two leaves the antenna
+off rather than on.
+
+**4.8e — disabling IOPM mid-wake must still restore.** This is the case that has
+no restart at all, and it is the one a reasonable person would assume is safe.
+
+1. Antenna off, force a transition, wait for `WakeOwned=True`.
+2. **While IOPM owns the wake**, set `[General] Enabled=false` in Custom Data.
+3. Wait for the config to apply (it applies at `Idle`).
+
+Expected: `Compact Antenna Moon` is switched **off** within a cycle or two, and
+`WakeOwned` returns to `False` — even though no further IOPM cycle will ever
+start. The restore is done by `Main()`, which keeps running regardless.
+
+Repeat with `[Alerts] Enabled=false` and with `WakeAntennaForAlerts=false`; both
+must restore the same way.
 
 **4.8b — recovery works with IOPM switched off.** Repeat step 3, but before
 recompiling also set `[General] Enabled=false`. No IOPM cycle runs at all in that
@@ -436,8 +468,10 @@ this feature is not allowed to have.
 
 ## Probe 3 — nothing else changed
 
-The whole point of putting alerts in their own read-only phase is that the rest
-of IOPM is untouched. Confirm against the v2.4.39 smoke test
+The whole point of putting alerts in their own phase is that the rest of IOPM is
+untouched. The phase is **not** completely read-only — the narrowed invariant is
+that `AlertEvaluation` mutates no queue and no inventory, and may modify only
+`Enabled` on the explicitly configured alert antenna. Confirm against the v2.4.39 smoke test
 (`uat/v2.4.39/smoke-test.txt`):
 
 - `[IOPM.Status]` — `State=Running`, `Sorting=OK`, `Production=OK`, `Warnings=0`

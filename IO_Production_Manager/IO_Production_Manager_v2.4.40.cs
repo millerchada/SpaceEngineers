@@ -253,11 +253,6 @@ public Program() {
 public void Save() { } // machine health is intentionally in-memory only
 public void Main(string argument, UpdateType updateSource) {
   if ((updateSource & UpdateType.Update10) == 0) return;
-  // FIRST, AND OUTSIDE EVERY GATE BELOW. An antenna IOPM switched on must come back down even
-  // if [General] Enabled has since been set false - which stops cycles entirely, so recovery
-  // reached through the alert phase could never run. Reads no config and starts no cycle, so
-  // the config-snapshot rule is untouched.
-  WakeRecover();
   double dt = Runtime.TimeSinceLastRun.TotalSeconds;
   if (dt <= 0) dt = 0.1667;
   _elapsedSinceCycle += dt;
@@ -266,6 +261,11 @@ public void Main(string argument, UpdateType updateSource) {
   if (!string.Equals(_lastCustomDataSeen, Me.CustomData, StringComparison.Ordinal))
     _cfgDirty = true;
   if (_cyclePhase == PHASE_IDLE && _cfgDirty) { LoadConfig(); _cfgDirty = false; }
+  // OUTSIDE EVERY GATE BELOW, and deliberately AFTER the config snapshot has applied so it
+  // sees the setting that may have just removed the alert phase. An antenna IOPM switched on
+  // must come back down even when [General] Enabled=false stops cycles entirely. Starts no
+  // cycle and mutates no config, so the config-snapshot rule is untouched.
+  WakeService();
   if (_cyclePhase == PHASE_IDLE && _cfg.GeneralEnabled && _elapsedSinceCycle >= Math.Max(1, _cfg.UpdateSeconds))
     StartCycle();
   int ph = _cyclePhase;
@@ -2469,6 +2469,19 @@ const int WA_NONE = 0, WA_SEND = 1, WA_WAKE = 2, WA_REST = 3, WA_FAIL = 4, WA_DR
 //   isAntenna - that block is an IMyRadioAntenna. Construct membership is deliberately NOT an
 //               input; an EntityId is durable ownership and detaching does not cancel it.
 const int WR_NONE = 0, WR_CORRUPT = 1, WR_RETRY = 2, WR_RESTORE = 3;
+// WHO IS RESPONSIBLE FOR AN ACTIVE WAKE THIS EXECUTION.
+// The alert phase normally owns the whole wake lifecycle - but it only runs inside a cycle,
+// and no cycle starts when [General] Enabled=false. A wake taken before that config applied
+// would then have no code path left that could ever put the antenna back. Main() always runs,
+// so Main() is the backstop; this table says when it has to act.
+//   owned  - _wkOwn != null: THIS runtime intentionally switched the antenna on. An active
+//            wake must never be mistaken for an interrupted one and cancelled a tick later.
+const int WS_NONE = 0, WS_RESTORE = 1, WS_RECOVER = 2;
+static int WakeServiceAction(bool owned, bool generalEnabled, bool alertsEnabled, bool wakeCfg) {
+  if (!owned) return WS_RECOVER;   // Storage, if any, is a previous owner's obligation
+  // Config has taken away the phase that would have restored this. Main must do it instead.
+  return (generalEnabled && alertsEnabled && wakeCfg) ? WS_NONE : WS_RESTORE;
+}
 static int WakeRecoverAction(bool hasMarker, bool parsed, bool resolved, bool isAntenna) {
   if (!hasMarker) return WR_NONE;
   if (!parsed) return WR_CORRUPT;      // not a number: an impossible state, not an absent block
@@ -2495,7 +2508,7 @@ List<IMyRadioAntenna> _ants = new List<IMyRadioAntenna>();
 IMyRadioAntenna _wkAnt;   // resolved from config this cycle; null unless exactly one match
 IMyRadioAntenna _wkOwn;   // the antenna WE switched on; non-null exactly while we owe a restore
 int _wkFound, _wkState;
-bool _wkEnabled, _wkBroadcast, _wkDone, _wkRetire;
+bool _wkEnabled, _wkBroadcast, _wkRetire;
 string _wkErr = "";
 List<string> _alPendK = new List<string>(), _alPendM = new List<string>();
 // EXACT name, same construct, EXACTLY ONE match. Never "the first antenna found", never a
@@ -2538,9 +2551,15 @@ void WakeOn() {
     _wkState = WK_WAKING;
     _wkErr = "";
   } catch {
-    // The enable itself failed, so the antenna was never switched on and there is provably
-    // nothing to restore. That is the one place clearing the marker early is sound.
-    _wkOwn = null; Storage = ""; _wkState = WK_ERR; _wkErr = "enable failed";
+    // THE MARKER IS DELIBERATELY LEFT ALONE. An exception from the setter does NOT prove the
+    // antenna stayed off - the API makes no such promise, and a setter that changed state and
+    // then threw would strand the block for good if we cleared here. So ownership is NOT
+    // taken (no send, no commit), the marker written a moment ago is retained, and the
+    // recovery path forces that exact antenna to Enabled=false on a later execution. If the
+    // antenna never did turn on, that restore is harmless; if it did, it is the only thing
+    // that saves it. And if the Storage write itself threw, no marker exists and none is
+    // invented - nothing here writes one.
+    _wkOwn = null; _wkState = WK_ERR; _wkErr = "enable failed; marker retained for recovery";
   }
 }
 void WakeOff() {
@@ -2581,8 +2600,19 @@ void WakeDrop() {
 // detached onto another construct - grinding, a merge block, a rotor coming apart - does not
 // cancel the obligation. The id still names one specific antenna, and that antenna is still on
 // because of us.
+// NO ONE-SHOT LATCH, AND THAT IS THE FIX RATHER THAN AN OPTIMISATION. An earlier build cached
+// "recovery already ran" in a bool, so a wake taken LATER in the same runtime could never be
+// seen by this path - and if the player then set [General] Enabled=false, no cycle would ever
+// start again to restore it and the antenna stayed on forever. The only state worth trusting
+// is the state that means something: _wkOwn says this runtime owns an active wake, and a
+// non-empty Storage says somebody owed a restore. A bool duplicating them can only go stale.
+void WakeService() {
+  switch (WakeServiceAction(_wkOwn != null, _cfg.GeneralEnabled, _cfg.AlertsEnabled, _cfg.WakeAntenna)) {
+    case WS_RESTORE: WakeOff(); break;   // the phase that would have done this cannot run again
+    case WS_RECOVER: WakeRecover(); break;
+  }
+}
 void WakeRecover() {
-  if (_wkDone) return;
   string mark = Storage;
   long id = 0;
   bool has = !string.IsNullOrEmpty(mark);
@@ -2592,14 +2622,12 @@ void WakeRecover() {
   IMyRadioAntenna a = b as IMyRadioAntenna;
   switch (WakeRecoverAction(has, parsed, b != null, a != null)) {
     case WR_NONE:
-      _wkDone = true;
       break;
     case WR_CORRUPT:
       // The only two terminal conditions, and neither is a guess about the world: a marker
       // that is not a number, or an id that resolves to something IOPM could never have taken
       // ownership of. Both are impossible states rather than absent antennas.
       Storage = "";
-      _wkDone = true;
       _wkErr = parsed ? "wake marker " + id + " is not a radio antenna; discarded as corrupt"
         : "wake marker unreadable; discarded as corrupt";
       break;
@@ -2622,7 +2650,6 @@ void WakeRecover() {
         return;
       }
       Storage = "";
-      _wkDone = true;
       _wkErr = "restored antenna " + id + " after an interrupted wake";
       break;
   }

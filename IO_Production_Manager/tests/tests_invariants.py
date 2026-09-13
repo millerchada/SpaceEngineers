@@ -143,11 +143,26 @@ def run(src, report):
     mm = re.search(r'public void Main\(.*?\n}', src, re.S)
     mainbody = mm.group(0) if mm else ''
     check('recovery is called from Main(), not only from the alert phase',
-          'WakeRecover();' in mainbody)
-    check('  ... before anything reads config or starts a cycle',
-          0 <= mainbody.find('WakeRecover();') < (mainbody.find('GeneralEnabled')
-                                                  if 'GeneralEnabled' in mainbody else -1))
+          'WakeService();' in mainbody)
+    # AFTER LoadConfig (so it sees a setting that has just removed the alert phase) and BEFORE
+    # the GeneralEnabled gate that decides whether a cycle starts at all.
+    check('  ... after the config snapshot applies, before the cycle gate',
+          0 <= mainbody.find('LoadConfig();') < mainbody.find('WakeService();')
+          < (mainbody.find('_cfg.GeneralEnabled') if '_cfg.GeneralEnabled' in mainbody else -1))
+    check('no one-shot latch can strand a wake taken later in the runtime',
+          '_wkDone' not in src)
+    check('Main restores an active wake once its phase can no longer run',
+          bool(m) and 'case WS_RESTORE: WakeOff(); break;' in m.group(0)
+          and 'return (generalEnabled && alertsEnabled && wakeCfg) ? WS_NONE : WS_RESTORE;'
+              in m.group(0))
+    check('an active wake is never treated as an interrupted one',
+          bool(m) and 'if (!owned) return WS_RECOVER;' in m.group(0))
+    check('a throwing enable does NOT clear the recovery marker',
+          bool(m) and '_wkOwn = null; _wkState = WK_ERR; _wkErr = "enable failed; marker '
+                      'retained for recovery";' in m.group(0))
     check('recovery has exactly one call site', len(hits(r'WakeRecover\(\);', lines)) == 1)
+    check('the Main backstop has exactly one call site',
+          len(hits(r'WakeService\(\);', lines)) == 1)
     check('a failed restore KEEPS the marker rather than clearing it',
           bool(m) and '_wkErr = "interrupted wake: restore of " + id + " failed, marker '
                       'retained";' in m.group(0).replace(chr(10) + '      ', ' '))
@@ -187,7 +202,7 @@ def run(src, report):
           'DegradedNoAntenna' not in body)
     check('Storage carries the wake marker and nothing else',
           len(hits(r'Storage\s*=', lines)) == len(hits(r'Storage\s*=', region))
-          and len(hits(r'Storage\s*=', region)) == 6)
+          and len(hits(r'Storage\s*=', region)) == 5)
     check('Save() still persists nothing', 'public void Save() { }' in src)
 
     report('-- the extraction markers tests_alert_engine.py depends on')
@@ -243,8 +258,8 @@ MUTANTS = [
     ('enabling the antenna before recording that IOPM owns it',
      lambda s: s.replace('    Storage = _wkAnt.EntityId.ToString();' + chr(10) + '    _wkAnt.Enabled = true;',
                          '    _wkAnt.Enabled = true;' + chr(10) + '    Storage = _wkAnt.EntityId.ToString();', 1)),
-    ('recovery buried back inside the alert phase',
-     lambda s: s.replace('  WakeRecover();' + chr(10), '', 1)),
+    ('the Main backstop removed, leaving recovery to the alert phase',
+     lambda s: s.replace('  WakeService();' + chr(10), '', 1)),
     ('recovery clearing the marker BEFORE the restore succeeds',
      lambda s: s.replace('  try { a.Enabled = false; }',
                          '  Storage = ""; _wkDone = true;' + chr(10) + '  try { a.Enabled = false; }', 1)),
@@ -257,6 +272,18 @@ MUTANTS = [
     ('recovery giving up when the antenna moved construct',
      lambda s: s.replace('  if (!isAntenna) return WR_CORRUPT;',
                          '  if (!isAntenna || true) return WR_CORRUPT;', 1)),
+    ('a throwing enable destroying the recovery marker',
+     lambda s: s.replace('    _wkOwn = null; _wkState = WK_ERR; _wkErr = "enable failed; marker retained for recovery";',
+                         '    _wkOwn = null; Storage = ""; _wkState = WK_ERR; _wkErr = "enable failed";', 1)),
+    ('a one-shot latch reintroduced in front of recovery',
+     lambda s: s.replace('void WakeRecover() {',
+                         'bool _wkDone;' + chr(10) + 'void WakeRecover() {' + chr(10) +
+                         '  if (_wkDone) return;' + chr(10) + '  _wkDone = true;', 1)),
+    ('Main never restoring a wake whose phase was disabled',
+     lambda s: s.replace('  return (generalEnabled && alertsEnabled && wakeCfg) ? WS_NONE : WS_RESTORE;',
+                         '  return WS_NONE;', 1)),
+    ('an active wake mistaken for an interrupted one',
+     lambda s: s.replace('  if (!owned) return WS_RECOVER;', '  return WS_RECOVER;', 1)),
     ('a failed send camping on the antenna',
      lambda s: s.replace('    if (retire) return WA_REST;', '', 1)),
     ('a deleted extraction marker',

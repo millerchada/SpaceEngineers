@@ -41,7 +41,7 @@ python ../../tools/build_pb.py IO_Production_Manager_v2.4.40.cs
 # -> IO_Production_Manager_v2.4.40.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.40: source 182,400 -> artifact **87,687** chars (**12,313** headroom).
+v2.4.40: source 185,847 -> artifact **88,011** chars (**11,989** headroom).
 v2.4.39: source 151,049 -> artifact 78,188 chars (21,812 headroom).
 
 Both artifacts shrank in 2.4.40 without a line of logic changing, because the
@@ -672,6 +672,7 @@ An antenna that was **already on** is never switched off. Ownership is explicit:
 | the antenna is renamed or removed mid-sequence | restores the block it woke, if that reference still works |
 | `WakeAntennaForAlerts` or `UseAntenna` switched off mid-wake | restores, then stands down |
 | alerting switched off entirely mid-wake | restores first |
+| **IOPM switched off entirely mid-wake** (`[General] Enabled=false`) | **`Main()` restores it** — no cycle will ever start again, so the alert phase cannot |
 | transport goes down mid-wake | restores — nothing can be sent, so nothing needs the antenna |
 | the restore itself throws | keeps ownership *and* the marker, and retries next evaluation |
 | a send throws under our wake | the wake is **retired** — antenna back down, and any retry builds a fresh sequence |
@@ -712,7 +713,18 @@ moment IOPM takes ownership it tracks the block by id, because a name can be
 edited and an id cannot.
 
 Recovery runs from **`Main()`**, on every execution, outside every gate there is
-— not from the alert phase. The reason is blunt: no cycle starts when
+— not from the alert phase, and with **no one-shot latch**. Responsibility is
+derived rather than cached: `_wkOwn != null` means this runtime owns an active
+wake and the alert phase governs it; otherwise a non-empty `Storage` is a previous
+owner's obligation to recover or retry. An earlier build cached "recovery already
+ran" in a flag, which meant a wake taken *later* in the same runtime could never
+be seen — and if `[General] Enabled=false` then stopped cycles, the antenna
+stayed on forever with no restart involved at all.
+
+`Main()` is also the backstop for an **active** wake whose phase has just been
+configured away: if `[General] Enabled`, `[Alerts] Enabled` or
+`WakeAntennaForAlerts` goes false while `WakeOwned=True`, `Main()` restores the
+antenna itself. The reason is blunt: no cycle starts when
 `[General] Enabled=false`, so recovery reached only through the alert phase could
 never run on a base whose IOPM had been switched off, and an antenna IOPM powered
 up would stay up indefinitely. Whether you have since disabled IOPM, disabled
