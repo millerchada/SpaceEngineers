@@ -205,8 +205,36 @@ def run(src, report):
           and len(hits(r'Storage\s*=', region)) == 5)
     check('Save() still persists nothing', 'public void Save() { }' in src)
 
+    # THE SORTING PHASE MUST BE ABLE TO STOP ITSELF. Bounding transfers was never the same as
+    # bounding work: on a live 52-container base the phase reached 46,685 of 50,000 instructions
+    # with nothing watching, and raising MaxTransfersPerCycle terminated the script outright.
+    # Every loop that enumerates containers owes a guard, and this counts them so one cannot be
+    # quietly dropped again.
+    report('-- sorting cannot exceed the instruction ceiling')
+    guards = hits(r'if \(!InstrOk\(\)\) break;', lines)
+    check('every container-enumerating loop is guarded', len(guards) == 6, str(len(guards)))
+    check('the guard samples the live counter',
+          'int cur = Runtime.CurrentInstructionCount;' in src
+          and 'InstrOver(cur, Runtime.MaxInstructionCount, _cfg.InstrBudgetPercent)' in src)
+    check('the peak is sampled INSIDE the phase, not only at the end of Main',
+          'if (cur > _peakInstructions) { _peakInstructions = cur; _peakPhaseName = PN[PHASE_SORTING]; }'
+          in src)
+    check('the budget percent is clamped below 100',
+          'Math.Max(10, Math.Min(95, _ini.Get("Sorting", "InstructionBudgetPercent")' in src)
+    report('-- balance gets a reserve routing cannot spend')
+    check('the reserve is withheld before routing runs',
+          'int reserve = _cfg.BalanceEnabled ? BalanceReserve(tb, _cfg.BalanceReservePercent) : 0;' in src
+          and 'int rb = tb - reserve;' in src)
+    check('  ... and rejoins the allowance afterwards', 'tb = rb + reserve;' in src)
+    check('the reserve can never exceed half the allowance',
+          'return Math.Min(tb / 2, Math.Max(1, (int)(tb * (pct / 100.0))));' in src)
+    check('machine-output evacuation still runs first and unguarded',
+          'rb = RouteSources(_mOut, rb, false);' in src)
+    check('a skipped Organize clears its diagnostics for ANY reason',
+          'if (!_cfg.OrganizeEnabled || tb <= 0 || !InstrOk()) ResetOrganizeDiag();' in src)
+
     report('-- the extraction markers tests_alert_engine.py depends on')
-    for name in ('alert-engine', 'alert-transport', 'alert-wake'):
+    for name in ('alert-engine', 'alert-transport', 'alert-wake', 'sorting-budget'):
         check('marker pair <%s> present' % name,
               ('// <%s>' % name) in src and ('// </%s>' % name) in src)
     return fails, n[0]
@@ -286,6 +314,16 @@ MUTANTS = [
      lambda s: s.replace('  if (!owned) return WS_RECOVER;', '  return WS_RECOVER;', 1)),
     ('a failed send camping on the antenna',
      lambda s: s.replace('    if (retire) return WA_REST;', '', 1)),
+    ('an unguarded container loop in the sorting phase',
+     lambda s: s.replace('    if (!InstrOk()) break; // stop cleanly; the rest of this pass resumes next cycle' + chr(10), '', 1)),
+    ('the balance reserve handed straight back to routing',
+     lambda s: s.replace('  int rb = tb - reserve;', '  int rb = tb;', 1)),
+    ('an instruction budget that allows the full ceiling',
+     lambda s: s.replace('Math.Max(10, Math.Min(95, _ini.Get("Sorting", "InstructionBudgetPercent")',
+                         'Math.Max(10, Math.Min(100, _ini.Get("Sorting", "InstructionBudgetPercent")', 1)),
+    ('Organize left stale when it runs out of budget',
+     lambda s: s.replace('if (!_cfg.OrganizeEnabled || tb <= 0 || !InstrOk()) ResetOrganizeDiag();',
+                         'if (!_cfg.OrganizeEnabled) ResetOrganizeDiag();', 1)),
     ('a deleted extraction marker',
      lambda s: s.replace('// </alert-engine>', '', 1)),
 ]

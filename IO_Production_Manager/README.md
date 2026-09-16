@@ -41,7 +41,7 @@ python ../../tools/build_pb.py IO_Production_Manager_v2.4.40.cs
 # -> IO_Production_Manager_v2.4.40.min.cs   <-- paste THIS into the block
 ```
 
-v2.4.40: source 185,847 -> artifact **88,011** chars (**11,989** headroom).
+v2.4.40: source 189,483 -> artifact **89,097** chars (**10,903** headroom).
 v2.4.39: source 151,049 -> artifact 78,188 chars (21,812 headroom).
 
 Both artifacts shrank in 2.4.40 without a line of logic changing, because the
@@ -225,6 +225,7 @@ about:
 |---|---|
 | PB source ceiling | 100,000 characters |
 | Runtime instructions | 50,000 **per invocation** |
+| Sorting instruction guard | `[Sorting] InstructionBudgetPercent`, default 75 (2.4.40+) |
 | Observed peak (v2.4.21) | 25,250, phase `DockScan` (35 containers, 9 docked constructs, 160 unload sources) |
 
 `Sorting` grows with **container count**; `DockScan` is independent of docked

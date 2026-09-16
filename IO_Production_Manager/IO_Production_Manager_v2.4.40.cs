@@ -65,6 +65,8 @@ class Config {
   // everywhere else, which turning Organize off entirely does not.
   public HashSet<string> OrganizeSkip = HS();
   public double BalanceTolerancePercent = 5;
+  public int InstrBudgetPercent = 75;     // share of the PB instruction ceiling Sorting may spend
+  public int BalanceReservePercent = 25;  // share of the transfer allowance routing may not eat
   public int MaxTransfersPerCycle = 25;
   public string OverflowPolicy = "Overflow"; // fixed compatibility token, not configurable
   public bool ProductionEnabled = false;
@@ -367,6 +369,10 @@ void LoadConfig() {
   // trusted. The resolved set is echoed to [IOPM.Organization] Skipped so a typo is visible.
   c.OrganizeSkip = ParseCategories(_ini.Get("Sorting", "OrganizeSkip").ToString(""));
   c.BalanceTolerancePercent = _ini.Get("Sorting", "BalanceTolerancePercent").ToDouble(5);
+  // Clamped, not trusted. 100 would hand the phase the whole ceiling and put the guard back
+  // where it started, and 0 would stop sorting doing anything at all.
+  c.InstrBudgetPercent = Math.Max(10, Math.Min(95, _ini.Get("Sorting", "InstructionBudgetPercent").ToInt32(75)));
+  c.BalanceReservePercent = Math.Max(0, Math.Min(50, _ini.Get("Sorting", "BalanceReservePercent").ToInt32(25)));
   c.MaxTransfersPerCycle = _ini.Get("Sorting", "MaxTransfersPerCycle").ToInt32(25);
   c.OverflowPolicy = _ini.Get("Sorting", "OverflowPolicy").ToString("Overflow");
   c.ProductionEnabled = _ini.Get("Production", "Enabled").ToBoolean(false);
@@ -450,7 +456,7 @@ void LoadConfig() {
 void WriteDefaultCustomData() {
   Me.CustomData =
 "[General]\nEnabled=true\nUpdateSeconds=5\n" +
-"[Sorting]\nEnabled=true\nBalance=true\nOrganize=true\nOrganizeSkip=Ores\nBalanceTolerancePercent=5\nMaxTransfersPerCycle=25\nOverflowPolicy=Overflow\n" +
+"[Sorting]\nEnabled=true\nBalance=true\nOrganize=true\nOrganizeSkip=Ores\nBalanceTolerancePercent=5\nMaxTransfersPerCycle=25\nOverflowPolicy=Overflow\nInstructionBudgetPercent=75\nBalanceReservePercent=25\n" +
 "[Production]\nEnabled=false\nAllowSurvivalKitFallback=false\nStallDetectionCycles=5\nInputRecoveryEnabled=true\nRecoveryCooldownCycles=6\n" +
 "[Docking]\nEnabled=true\nUnloadDocked=true\nServiceLoadouts=true\nLoadoutBorrowPercent=25\nUnloadConnectorInventory=true\nUnloadCargo=true\nUnloadDrills=true\nSeedLoadoutTemplate=true\n" +
 "[Display]\nManageFonts=true\nStatusFontSize=0.8\nStockFontSize=0.8\nStockRowsPerPage=0\n" +
@@ -779,31 +785,82 @@ bool RouteItem(IMyInventory src, MyInventoryItem item, string category, out MyFi
   else Warn(category + " pool full/unreachable, and Overflow full/unreachable — item left in place");
   return false;
 }
+// <sorting-budget>
+// TWO BUDGETS, AND ONLY ONE OF THEM WAS EVER ENFORCED.
+// MaxTransfersPerCycle bounds how many MOVES a cycle makes. Nothing bounded how many
+// INSTRUCTIONS the sorting phase spent getting there, and the two are only loosely related:
+// the dominant cost is enumeration - a GetItems on every container in routing, again in
+// balance, again in organize - which scales with how full the base is, not with how many moves
+// are permitted. On a live 52-container base that gap killed the script outright. Raising
+// MaxTransfersPerCycle from 25 to 40 took the phase past the 50,000-instruction ceiling and
+// Space Engineers terminated it mid-phase; 25 had been sitting at 46,685, a 7% margin nobody
+// could see. Bounding transfers was never the same thing as bounding work.
+static bool InstrOver(int current, int max, int pct) {
+  return max > 0 && current >= (int)(max * (pct / 100.0));
+}
+// The slice of the transfer allowance held back for balancing.
+// Balance is the LAST of seven sorting passes, so on a busy base the four routing passes ahead
+// of it consume every transfer and it never runs at all - observed live as ore that simply
+// never levelled, with the give-away that [IOPM.Organization] behind it had frozen too.
+// Holding a slice back costs NO extra instructions: the total number of transfers is unchanged,
+// only who is allowed to spend them. Capped at half so evacuation can never be starved in the
+// other direction - production output leaving the machines still outranks tidiness.
+static int BalanceReserve(int tb, int pct) {
+  if (tb <= 0 || pct <= 0) return 0;
+  return Math.Min(tb / 2, Math.Max(1, (int)(tb * (pct / 100.0))));
+}
+// </sorting-budget>
+int _instrCut;      // passes abandoned this cycle because the instruction budget ran out
+bool _orgRan;       // did OrganizeInventories actually execute this cycle
+// Samples the instruction counter, and that sample does double duty.
+// It also closes a blind spot that made the crash unforeseeable: the peak used to be read only
+// at the END of Main(), so a cycle that died mid-phase recorded nothing at all and the
+// high-water mark stayed reassuring right up until the script stopped. Watching
+// PeakInstructions could never have warned anyone, because the fatal run never reached the
+// line that writes it. Sampling inside the phase means a near miss is visible as a near miss.
+bool InstrOk() {
+  int cur = Runtime.CurrentInstructionCount;
+  if (cur > _peakInstructions) { _peakInstructions = cur; _peakPhaseName = PN[PHASE_SORTING]; }
+  if (!InstrOver(cur, Runtime.MaxInstructionCount, _cfg.InstrBudgetPercent)) return true;
+  _instrCut++;
+  return false;
+}
 int RunSorting(int tb) {
   if (tb <= 0) return 0;
+  _instrCut = 0;
+  _orgRan = false;
   // PRIORITY ORDER (production output is evacuated FIRST, never starved by cosmetics):
   // 1 machine outputs, 2 refinery outputs (evacuation only — queues/inputs never touched),
   // 3 connector/plain, 4 misroute correction, 5 Overflow drain, 6 balance, 7 organize.
-  tb = RouteSources(_mOut, tb, false);
-  tb = RouteSources(_refOut, tb, false);
-  tb = RouteSources(_plainInv, tb, false);
-  _catInvs.Clear();
-  for (int i = 0; i < _cons.Count; i++) {
-    CI ci = _cons[i];
-    if (_ignInv.Contains(ci.Inventory)) continue;
-    if (ci.Categories.Contains(OVF)) continue;
-    _catInvs.Add(ci.Inventory);
+  // Routing runs against tb MINUS the balance reserve, and the reserve rejoins the allowance
+  // afterwards along with whatever routing did not need. Evacuation still goes first and still
+  // gets the lion's share; it simply cannot take the last transfer any more.
+  int reserve = _cfg.BalanceEnabled ? BalanceReserve(tb, _cfg.BalanceReservePercent) : 0;
+  int rb = tb - reserve;
+  rb = RouteSources(_mOut, rb, false);
+  if (InstrOk()) rb = RouteSources(_refOut, rb, false);
+  if (InstrOk()) rb = RouteSources(_plainInv, rb, false);
+  if (InstrOk()) {
+    _catInvs.Clear();
+    for (int i = 0; i < _cons.Count; i++) {
+      CI ci = _cons[i];
+      if (_ignInv.Contains(ci.Inventory)) continue;
+      if (ci.Categories.Contains(OVF)) continue;
+      _catInvs.Add(ci.Inventory);
+    }
+    rb = RouteSources(_catInvs, rb, true);
   }
-  tb = RouteSources(_catInvs, tb, true);
-  if (tb > 0) tb = DrainOverflow(tb);
-  if (_cfg.BalanceEnabled && tb > 0) tb = BalancePools(tb);
-  // A DISABLED PHASE MUST CLEAR ITS OWN DIAGNOSTICS. OrganizeInventories zeroes these on
-  // entry, so skipping it used to leave [IOPM.Organization] frozen on the last cycle that ran
-  // - counters, LastAttempt and all. That reads as an active phase and made Organize=false look
-  // like it had not taken effect. Same failure class as the frozen status screen: a stale
-  // display presented as current state. Any future phase gated by config owes the same reset.
-  if (!_cfg.OrganizeEnabled) ResetOrganizeDiag();
-  else if (tb > 0) tb = OrganizeInventories(tb);
+  tb = rb + reserve;
+  if (tb > 0 && InstrOk()) tb = DrainOverflow(tb);
+  if (_cfg.BalanceEnabled && tb > 0 && InstrOk()) tb = BalancePools(tb);
+  // A SKIPPED PHASE MUST CLEAR ITS OWN DIAGNOSTICS, AND "SKIPPED" MEANS FOR ANY REASON.
+  // This used to test Organize=false only, so a cycle that ran out of transfers left
+  // [IOPM.Organization] frozen on whatever the last funded cycle had done - counters,
+  // LastAttempt and all - reading as an active phase. That is precisely how the starved
+  // balance pass stayed invisible: the section behind it went stale at the same moment and
+  // nothing in the dump admitted it. Ran= now says outright whether the phase executed.
+  if (!_cfg.OrganizeEnabled || tb <= 0 || !InstrOk()) ResetOrganizeDiag();
+  else { tb = OrganizeInventories(tb); _orgRan = true; }
   return tb;
 }
 void ResetOrganizeDiag() {
@@ -820,6 +877,7 @@ bool IsOrganizeSkipped(CI ci) {
 int OrganizeInventories(int tb) {
   ResetOrganizeDiag();
   for (int c = 0; c < _cons.Count && tb > 0; c++) {
+    if (!InstrOk()) break;
     CI ci = _cons[c];
     if (_ignInv.Contains(ci.Inventory)) continue;
     if (ci.Categories.Contains(OVF)) continue; // Overflow: no cosmetic ordering
@@ -917,6 +975,7 @@ HashSet<string> CatsOf(IMyInventory inv) {
 }
 int RouteSources(List<IMyInventory> sources, int tb, bool ownCats) {
   for (int s = 0; s < sources.Count && tb > 0; s++) {
+    if (!InstrOk()) break; // stop cleanly; the rest of this pass resumes next cycle
     IMyInventory src = sources[s];
     if (src == null || _ignInv.Contains(src)) continue;
     int wait;
@@ -925,6 +984,7 @@ int RouteSources(List<IMyInventory> sources, int tb, bool ownCats) {
     bool anySuccess = false, sawRoutable = false;
     bool movedAny = true;
     while (movedAny && tb > 0) {
+      if (!InstrOk()) break; // each turn of this loop refetches the whole inventory
       movedAny = false;
       _itemsA.Clear();
       src.GetItems(_itemsA);
@@ -972,6 +1032,7 @@ int BalancePools(int tb) {
   List<string> groupKeys = new List<string>(groups.Keys);
   groupKeys.Sort(SCI); // deterministic pass order
   for (int g = 0; g < groupKeys.Count && tb > 0; g++) {
+    if (!InstrOk()) break;
     List<CI> eligible = groups[groupKeys[g]];
     if (eligible.Count < 2) continue;
     HashSet<string> groupCategories = eligible[0].Categories; // identical across the group by construction
@@ -981,6 +1042,7 @@ int BalancePools(int tb) {
     Dictionary<string, double> perItemTotal = DD();
     Dictionary<string, Dictionary<int, double>> perItemPerContainer = new Dictionary<string, Dictionary<int, double>>(SCI);
     for (int i = 0; i < eligible.Count; i++) {
+      if (!InstrOk()) break; // the enumeration alone is the expensive half of this pass
       _itemsA.Clear();
       eligible[i].Inventory.GetItems(_itemsA);
       for (int k = 0; k < _itemsA.Count; k++) {
@@ -1078,6 +1140,7 @@ int BalancePools(int tb) {
 int DrainOverflow(int tb) {
   List<CI> overflowPool = PoolFor(OVF);
   for (int i = 0; i < overflowPool.Count && tb > 0; i++) {
+    if (!InstrOk()) break;
     CI of = overflowPool[i];
     if (_ignInv.Contains(of.Inventory)) continue;
     _itemsA.Clear();
@@ -2813,6 +2876,11 @@ void WriteDiagnostics() {
   ini.Set("IOPM.Runtime", "PeakInstructions", _peakInstructions);
   ini.Set("IOPM.Runtime", "PeakPhase", _peakPhaseName);
   ini.Set("IOPM.Runtime", "MaxInstructions", Runtime.MaxInstructionCount);
+  // The instruction guard, reported rather than silent. SortingCutShort counting up means the
+  // phase is doing as much as it safely can per cycle and deferring the rest - healthy, and
+  // far better than the alternative, which was the game terminating the script mid-phase.
+  ini.Set("IOPM.Runtime", "InstructionBudgetPercent", _cfg.InstrBudgetPercent);
+  ini.Set("IOPM.Runtime", "SortingCutShort", _instrCut);
   foreach (var kv in _pools) {
     int healthy; double pct;
     PoolStats(kv.Value, out healthy, out pct);
@@ -2929,6 +2997,7 @@ void WriteDiagnostics() {
   // dropped by ParseCategories, and printing the raw text would hide the typo it came from.
   ini.Set(og, "Skipped", _cfg.OrganizeSkip.Count == 0 ? "none" :
     string.Join(",", new List<string>(_cfg.OrganizeSkip).ToArray()));
+  ini.Set(og, "Ran", _orgRan); // "did nothing" vs "never got the chance" - never guess again
   ini.Set(og, "SkippedContainers", _orgSkipped);
   ini.Set(og, "Examined", _orgExamined);
   ini.Set(og, "OutOfOrder", _orgOutOfOrder);

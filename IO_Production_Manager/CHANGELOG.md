@@ -28,6 +28,116 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.40 — the sorting phase can now stop itself (live incident)
+
+**A live incident, not a review finding.** On the Moon base the game terminated
+the script twice: *"script used more instructions than the 50000 limit"*, phase
+`Sorting`.
+
+### Diagnosis
+
+Ore had stopped levelling. The dump said why, in a contradiction between two
+sections:
+
+    [IOPM.Warehouse.Ores]  Containers=24          <- rewritten every cycle
+    [IOPM.Organization]    SkippedContainers=26   <- only written when the phase runs
+
+Those two count the same set — containers whose categories include `Ores` — so
+they cannot disagree unless `[IOPM.Organization]` was **stale**. It was. Organize
+sits directly behind balance, both gated on `tb > 0`, so a frozen Organize block
+meant the transfer allowance was gone before either ran.
+
+Balance is the **last of seven** sorting passes. On a base with 24 ore
+containers, 17 ingot containers and 23 producing machines, the four routing
+passes ahead of it consumed all 19 transfers every cycle. It had been starved for
+weeks, and the section that would have shown it had gone stale at the same
+moment.
+
+Raising `MaxTransfersPerCycle` fixed the balancing and killed the script:
+25 → 40 → dead, 40 → 50 → dead.
+
+### The defect
+
+**Bounding transfers was never the same as bounding work.**
+`MaxTransfersPerCycle` limits how many *moves* a cycle makes; nothing limited how
+many *instructions* the phase spent. The two are only loosely related, because
+the dominant cost is enumeration — a `GetItems` on every container in routing,
+again in balance, again in organize — which scales with how full the base is, not
+with how many moves are permitted.
+
+`Runtime.CurrentInstructionCount` appeared in this script exactly twice before
+today, and **both occurrences were reporting**. Nothing ever checked it.
+
+Worse, the metric that should have warned about this **structurally could not**.
+`PeakInstructions` was sampled at the end of `Main()`; a cycle that died mid-phase
+never reached that line, so the high-water mark sat at a reassuring 46,685 while
+the script was being killed. Watching it was never going to help, and advice to
+watch it was worthless.
+
+### The guard
+
+    static bool InstrOver(int current, int max, int pct)
+
+Sorting now stops cleanly once it has spent its share of the ceiling
+(`[Sorting] InstructionBudgetPercent`, default 75, clamped 10–95) and resumes
+next cycle. Six container-enumerating loops are guarded — the three routing
+passes, the overflow drain, both loops in `BalancePools`, and organize — and an
+invariant counts them so one cannot be quietly dropped later.
+
+Machine-output evacuation still runs **first and unguarded**: production output
+leaving the machines outranks everything, including the guard.
+
+The same sample updates the peak **inside** the phase, so a near miss is finally
+visible as a near miss.
+
+### The reserve
+
+    static int BalanceReserve(int tb, int pct)
+
+A slice of the allowance (`[Sorting] BalanceReservePercent`, default 25, capped
+at half) is withheld before routing runs and rejoins it afterwards along with
+whatever routing did not need. **This costs no instructions at all** — the total
+transfer count is unchanged, only who may spend it. That is the point: the
+balancing problem never needed a bigger budget, it needed a protected one.
+
+### And the thing that hid it
+
+`[IOPM.Organization]` was cleared only when `Organize=false`, never when the
+phase ran out of budget — so it froze and read as current. The comment directly
+above that line already warned about exactly this failure class. It now resets on
+**any** skip, and a new `Ran=` states outright whether the phase executed.
+
+### Measured on the live base
+
+With `Organize=false` and `MaxTransfersPerCycle=30`, the peak fell from 46,685
+(`Sorting`) to **27,526 (`DockScan`)** — Sorting stopped being the most expensive
+phase at all. Organize, not balance, was the bulk of the cost: it does a
+`GetItems` on every non-skipped container inside the same 50,000-instruction
+budget. Worth knowing before tuning anything else.
+
+### Results
+
+    tests_alert_engine        157 checks                  PASS   (was 140)
+    tests_invariants           61 checks + 27 controls    PASS   (was 51 + 23)
+    tests_minify               71 checks                  PASS
+    tests_canonicalize_stock / tests_yield_math           PASS
+    release gate, v2.4.40 and v2.4.39                     PASS
+
+    artifact  89,097 chars    headroom  10,903
+
+Four new negative controls: an unguarded container loop, the reserve handed
+straight back to routing, a budget allowing the full ceiling, and Organize left
+stale when out of budget. One test pins the live number —
+`InstrOver(46685, 50000, 75)` must stop.
+
+### For the affected base
+
+`InstructionBudgetPercent=75` and `BalanceReservePercent=25` are the new
+defaults, but **upgrading never back-fills new keys** — type them in, or they
+fall back to those same coded defaults. `MaxTransfersPerCycle` can now be raised
+freely: the guard decides how much of it is affordable, rather than the player
+guessing and the game arbitrating.
+
 ## 2.4.40 — two wake lifecycle defects, and the end of the one-shot latch
 
 **Final repo change before live UAT.** Both defects stranded the player's antenna
