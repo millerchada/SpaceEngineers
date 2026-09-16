@@ -11,7 +11,7 @@ repo at this commit, not recalled.
 > v2.4.39 remains the accepted runtime release and the thing to paste. The
 > v2.4.40 scope, API-verification findings and open UAT plan are in
 > `CHANGELOG.md` and `uat/v2.4.40/plan.md`. One deviation is recorded there: the
-> v2.4.40 is **repo-ready for live UAT** at **88,011 chars (11,989 headroom)** after a dedicated
+> v2.4.41 is **repo-ready for live UAT**. v2.4.40 is frozen in `archive/v2.4.40/` after a dedicated
 > build-time reclamation pass — space tightening and own-type member shortening,
 > no runtime logic touched. The earlier budget objection is resolved. Three
 > rounds of review corrections are recorded in CHANGELOG (four alert-state

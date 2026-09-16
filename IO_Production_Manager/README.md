@@ -8,15 +8,17 @@ Version history: [CHANGELOG.md](CHANGELOG.md).
 
 ## Project layout
 
-    IO_Production_Manager_v2.4.40.cs       current candidate source
-    IO_Production_Manager_v2.4.40.min.cs   current candidate artifact - paste THIS
+    IO_Production_Manager_v2.4.41.cs       current candidate source
+    IO_Production_Manager_v2.4.41.min.cs   current candidate artifact - paste THIS
     IO_Production_Manager_v2.4.39.cs       last release ACCEPTED in live play
     IO_Production_Manager_v2.4.39.min.cs   its artifact
     README.md  CHANGELOG.md
 
 Two versions live here at a time, and the distinction matters: **v2.4.39 is the
 accepted runtime release** — it has passed the gate *and* a live smoke test.
-**v2.4.40 has passed the gate but not yet live UAT** (`uat/v2.4.40/plan.md`).
+**v2.4.41 has passed the gate but not yet live UAT** (`uat/v2.4.40/plan.md`, which
+still applies — v2.4.41 adds the sorting instruction guard on top of the same
+alert feature set).
 Superseded pairs move to `archive/` only on promotion, so anything in `archive/`
 is neither.
 
@@ -29,7 +31,7 @@ is neither.
 
 Run everything from the repository root:
 
-    python IO_Production_Manager/tests/run_release_gate.py            IO_Production_Manager/IO_Production_Manager_v2.4.40.cs
+    python IO_Production_Manager/tests/run_release_gate.py            IO_Production_Manager/IO_Production_Manager_v2.4.41.cs
 
 ## Deploying — never paste the `.cs` file
 
@@ -37,8 +39,8 @@ The `.cs` is **source**. It is now larger than the PB's own 100,000-character
 ceiling, so it cannot be pasted into a block at all. Build the artifact:
 
 ```bash
-python ../../tools/build_pb.py IO_Production_Manager_v2.4.40.cs
-# -> IO_Production_Manager_v2.4.40.min.cs   <-- paste THIS into the block
+python ../../tools/build_pb.py IO_Production_Manager_v2.4.41.cs
+# -> IO_Production_Manager_v2.4.41.min.cs   <-- paste THIS into the block
 ```
 
 v2.4.40: source 189,483 -> artifact **89,097** chars (**10,903** headroom).
@@ -206,7 +208,16 @@ own stock below it.
 ## Versioning convention
 
 Each version is an **immutable file**: a copy plus a delta, never edited in
-place, so a regression isolates to one delta. The deployed version and the
+place, so a regression isolates to one delta.
+
+**This is now enforced, because asserting it was not enough.** v2.4.40 was edited
+in place across seven commits while it was being pasted into a live programmable
+block, and the predicted cost arrived on schedule: two different builds both
+reported `Version=2.4.40`, and identifying which one was running had to be done
+by spotting *absent* diagnostic keys. `tests/tests_versions.py` now hashes every
+frozen version against `tests/version_lock.json` and checks each file's `VERSION`
+constant against its filename. Exactly one version may be an open candidate.
+Freezing one is a deliberate edit to the lock file — the edit is the review. The deployed version and the
 current candidate both live here; superseded ones are in `archive/`, moved with
 `git mv` so `git log --follow` still traces them.
 

@@ -39,6 +39,11 @@ ALERT_REGION = r'^// ===== ALERTS.*?^// The script owns \[IOPM\.\*\] ONLY'
 # source's own VERSION constant. A source at or above ALERTS_FROM with no alert region is
 # still a hard failure; that is a deleted feature, not an old file.
 ALERTS_FROM = (2, 4, 40)
+# The sorting instruction guard and balance reserve arrive in 2.4.41. Gated for the same
+# reason the alert rules are: an archived release must still be provable against the gate,
+# and a rule that silently passes on an old file because the feature was never there proves
+# nothing either way.
+SORTING_FROM = (2, 4, 41)
 
 
 def source_version(src):
@@ -210,6 +215,15 @@ def run(src, report):
     # with nothing watching, and raising MaxTransfersPerCycle terminated the script outright.
     # Every loop that enumerates containers owes a guard, and this counts them so one cannot be
     # quietly dropped again.
+    if ver is not None and ver < SORTING_FROM:
+        report('-- sorting budget rules: NOT APPLICABLE (v%s predates the guard)'
+               % '.'.join(map(str, ver)))
+        report('-- the extraction markers tests_alert_engine.py depends on')
+        for name in ('alert-engine', 'alert-transport', 'alert-wake'):
+            check('marker pair <%s> present' % name,
+                  ('// <%s>' % name) in src and ('// </%s>' % name) in src)
+        return fails, n[0]
+
     report('-- sorting cannot exceed the instruction ceiling')
     guards = hits(r'if \(!InstrOk\(\)\) break;', lines)
     check('every container-enumerating loop is guarded', len(guards) == 6, str(len(guards)))
@@ -247,6 +261,10 @@ def quiet(*a):
 # Each mutant is a (name, substitution) that breaks exactly one invariant. The rules must
 # reject every one of them; if a mutant passes, the corresponding rule is dead.
 ALERT_MUTANT = 3  # index of the first mutant that edits alert code
+SORT_MUTANTS = ('an unguarded container loop in the sorting phase',
+                'the balance reserve handed straight back to routing',
+                'an instruction budget that allows the full ceiling',
+                'Organize left stale when it runs out of budget')
 
 MUTANTS = [
     ('a second AddQueueItem call site',
@@ -341,6 +359,8 @@ def main():
     print('1. NEGATIVE CONTROLS - each mutant must be REJECTED')
     ver = source_version(src)
     mutants = MUTANTS if (ver is None or ver >= ALERTS_FROM) else MUTANTS[:ALERT_MUTANT]
+    if ver is not None and ver < SORTING_FROM:
+        mutants = [m for m in mutants if m[0] not in SORT_MUTANTS]
     for name, mutate in mutants:
         mutated = mutate(src)
         if mutated == src:

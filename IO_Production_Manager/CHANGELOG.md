@@ -28,6 +28,105 @@ build_pb.py hard-errors on both rather than silently corrupting them.
 CAVEAT: in-game error line numbers now refer to the .min.cs, plus the PB's own
 ~32-line generated preamble. Map them back through the artifact, not the source.
 
+## 2.4.41 - sorting instruction guard, and version immutability made mechanical
+
+**v2.4.40 was edited in place across seven commits.** That is a direct violation
+of the project's own invariant 13, committed by the same work that was busy
+adding negative controls for everything else.
+
+    5201a2c  the sorting phase can now stop itself
+    5fd7a6f  two wake lifecycle defects
+    56fcc7e  final hardening
+    c76d731  three antenna-wake fixes + size pass
+    c895e8a  opt-in antenna wake
+    395aa8f  four alert-state defects
+    a0d861b  first-stage alerts
+
+The written carve-out is narrow - "a version that never compiled may be fixed in
+place" - and v2.4.40 compiled from `a0d861b` onward. Six of those seven had no
+excuse. The reasoning at the time was "it is an unaccepted candidate, not a
+release", which is a defensible reading of the spirit and was never surfaced as a
+judgement call to anyone.
+
+### The predicted cost arrived on schedule
+
+v2.4.40 was pasted into a live programmable block more than once while it was
+still being edited. Two different builds therefore reported:
+
+    [IOPM.Status] Version=2.4.40
+
+When it mattered - diagnosing a live instruction-limit crash - the version string
+could not say which build was running. It had to be inferred from the *absence*
+of diagnostic keys (`SortingCutShort`, `Organization Ran=`). Which commit was
+actually pasted is not recoverable, and that is the whole point of the rule:
+"so a regression isolates to one delta".
+
+### What was done
+
+- **v2.4.40 is frozen** at its state as of `5fd7a6f` - the last build before the
+  sorting-budget work - and moved to `archive/v2.4.40/` with `git mv`, per the
+  promotion convention.
+- **v2.4.41** is that file plus exactly one delta: the sorting instruction guard,
+  the balance reserve, and the Organize stale-diagnostics fix. The delta isolates
+  cleanly, which it did not before.
+- History was **not** rewritten. The commit list above is the record.
+
+### The gate that was missing
+
+`tests/tests_versions.py`, wired into the release gate like every other suite:
+
+1. Every version file's `VERSION` constant must match the version in its
+   filename. Catches copy-and-forget-to-bump.
+2. Every file in `tests/version_lock.json` must hash to its recorded sha256.
+   Frozen means frozen.
+3. Exactly **one** version may be an open candidate. Two means one of them is a
+   release someone could be running with nothing stopping it changing underneath
+   them.
+
+Freezing a version is a deliberate edit to the lock file - the edit is the
+review. There is no way to drift into it. Negative controls prove a single
+changed byte in a frozen file is rejected, and that the unmodified file is
+accepted.
+
+**It found three pre-existing defects on its first run.** Three archived releases
+carry a `VERSION` constant that disagrees with their filename:
+
+    archive/v2.0.4  declares 2.1.0
+    archive/v2.1.0  declares 2.1.1
+    archive/v2.1.4  declares 2.2.0
+
+Exactly the mistake this suite exists to catch, committed long before it existed.
+They are **not** corrected - editing a frozen release is the thing being
+prevented - but recorded in `const_mismatch` so they are acknowledged rather than
+tolerated, and so a NEW mismatch still fails.
+
+### Also in this release
+
+The sorting work from the live incident, unchanged in substance, now carrying its
+own version number: `InstrOver()` bounds the sorting phase's instruction cost
+(`[Sorting] InstructionBudgetPercent`, default 75), `BalanceReserve()` protects a
+slice of the transfer allowance for balancing (`[Sorting] BalanceReservePercent`,
+default 25), and `[IOPM.Organization]` resets on any skip rather than only when
+`Organize=false`.
+
+### Results
+
+    tests_alert_engine        157 checks                  PASS
+    tests_invariants           61 checks + 27 controls    PASS
+    tests_minify               71 checks                  PASS
+    tests_versions            122 checks                  PASS  (new)
+    tests_canonicalize_stock / tests_yield_math           PASS
+
+    release gate, v2.4.41                                 PASS
+    release gate, v2.4.39                                 PASS
+    release gate, archive/v2.4.40                         PASS
+
+    artifact  89,097 chars    headroom  10,903
+
+Both the alert suites and the invariant suite are now version-aware for the
+sorting region too, so a frozen release stays *provable* rather than merely
+preserved - running the gate against `archive/v2.4.40/` passes.
+
 ## 2.4.40 — the sorting phase can now stop itself (live incident)
 
 **A live incident, not a review finding.** On the Moon base the game terminated

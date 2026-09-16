@@ -7,11 +7,14 @@
 // setting it may write is Enabled on the CONFIGURED ALERT ANTENNA, opt-in, while an alert is
 // pending, restoring what it changed. Broadcast Controller target/UseAntenna/chat name and
 // every other antenna property stay NATIVE BLOCK SETTINGS owned by the player.
+// v2.4.41: the sorting phase can now bound its own INSTRUCTION cost, not just its transfer
+// count. Bounding transfers was never the same as bounding work, and the gap terminated the
+// script live. Balance also gets a reserve the routing passes ahead of it cannot spend.
 // v2.4.40: first-stage alerts - Broadcast Controller transport, a deterministic capacity
 // state engine with hysteresis and a flap-guard cooldown, and [IOPM.Alerts] diagnostics.
 // An alert is ANNOUNCED only once SendMessage returned without throwing; an observed startup
 // baseline is never an announcement, so it can never be "recovered" from.
-const string VERSION = "2.4.40";
+const string VERSION = "2.4.41";
 const StringComparison OIC = StringComparison.OrdinalIgnoreCase;
 static readonly StringComparer SCI = StringComparer.OrdinalIgnoreCase;
 static Dictionary<string, double> DD() { return new Dictionary<string, double>(SCI); }

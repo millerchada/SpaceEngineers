@@ -32,6 +32,10 @@ import tempfile
 # above FIRST_VERSION with no regions is still a hard FAILURE: that is the case where the
 # suite really has stopped testing something it should be testing.
 FIRST_VERSION = (2, 4, 40)
+# The sorting instruction guard and balance reserve arrive in 2.4.41. Their scenarios are
+# appended only when the source actually has the region, so the gate still runs green against
+# an archived 2.4.40 - a frozen release must stay provable, not just preserved.
+SORTING_FROM = (2, 4, 41)
 
 
 def source_version(src):
@@ -53,6 +57,32 @@ public class T {
 
 # The driver. Every expectation is a literal string, so a change to the message format is a
 # test failure rather than a silent reformat of what the player sees in chat.
+SORT_SLOT = '%%SORT%%'
+
+DRIVER_SORT = '''    Console.WriteLine("-- sorting instruction guard");
+    Eq("well under budget -> keep going", InstrOver(1000, 50000, 75) ? "stop" : "go", "go");
+    Eq("exactly at the cap -> stop", InstrOver(37500, 50000, 75) ? "stop" : "go", "stop");
+    Eq("just under the cap -> keep going", InstrOver(37499, 50000, 75) ? "stop" : "go", "go");
+    Eq("past the cap -> stop", InstrOver(49999, 50000, 75) ? "stop" : "go", "stop");
+    // The live failure: 46,685 of 50,000 was 'fine' under the old code because nothing looked.
+    Eq("the number that actually killed the base is caught", InstrOver(46685, 50000, 75) ? "stop" : "go", "stop");
+    Eq("a zero ceiling is never 'over' (no divide-by-nothing)", InstrOver(10, 0, 75) ? "stop" : "go", "go");
+    Eq("100% still stops before the hard ceiling is exceeded", InstrOver(50000, 50000, 100) ? "stop" : "go", "stop");
+
+    Console.WriteLine("-- balance reserve: routing cannot eat the last transfer");
+    EqI("25% of 40", BalanceReserve(40, 25), 10);
+    EqI("25% of 25", BalanceReserve(25, 25), 6);
+    EqI("25% of 19", BalanceReserve(19, 25), 4);
+    EqI("a reserve of 0% is no reserve at all", BalanceReserve(40, 0), 0);
+    EqI("no budget, no reserve", BalanceReserve(0, 25), 0);
+    EqI("tiny budgets still reserve at least one", BalanceReserve(2, 25), 1);
+    EqI("one transfer cannot be split", BalanceReserve(1, 25), 0);
+    EqI("never more than half, even at 50%", BalanceReserve(40, 50), 20);
+    EqI("  ... and the clamp holds above that", BalanceReserve(40, 90), 20);
+    EqI("routing keeps the rest", 40 - BalanceReserve(40, 25), 30);
+
+'''
+
 DRIVER = '''
   // ---- test driver -------------------------------------------------------
   // Three ways to drive one tick, because delivery is now part of the contract:
@@ -438,31 +468,10 @@ DRIVER = '''
     Eq("a throwing enable keeps its marker and the antenna is forced off",
        LifeRun("enable-threw"), "recover|restore|none");
 
-    Console.WriteLine("-- sorting instruction guard");
-    Eq("well under budget -> keep going", InstrOver(1000, 50000, 75) ? "stop" : "go", "go");
-    Eq("exactly at the cap -> stop", InstrOver(37500, 50000, 75) ? "stop" : "go", "stop");
-    Eq("just under the cap -> keep going", InstrOver(37499, 50000, 75) ? "stop" : "go", "go");
-    Eq("past the cap -> stop", InstrOver(49999, 50000, 75) ? "stop" : "go", "stop");
-    // The live failure: 46,685 of 50,000 was 'fine' under the old code because nothing looked.
-    Eq("the number that actually killed the base is caught", InstrOver(46685, 50000, 75) ? "stop" : "go", "stop");
-    Eq("a zero ceiling is never 'over' (no divide-by-nothing)", InstrOver(10, 0, 75) ? "stop" : "go", "go");
-    Eq("100% still stops before the hard ceiling is exceeded", InstrOver(50000, 50000, 100) ? "stop" : "go", "stop");
-
-    Console.WriteLine("-- balance reserve: routing cannot eat the last transfer");
-    EqI("25% of 40", BalanceReserve(40, 25), 10);
-    EqI("25% of 25", BalanceReserve(25, 25), 6);
-    EqI("25% of 19", BalanceReserve(19, 25), 4);
-    EqI("a reserve of 0% is no reserve at all", BalanceReserve(40, 0), 0);
-    EqI("no budget, no reserve", BalanceReserve(0, 25), 0);
-    EqI("tiny budgets still reserve at least one", BalanceReserve(2, 25), 1);
-    EqI("one transfer cannot be split", BalanceReserve(1, 25), 0);
-    EqI("never more than half, even at 50%", BalanceReserve(40, 50), 20);
-    EqI("  ... and the clamp holds above that", BalanceReserve(40, 90), 20);
-    EqI("routing keeps the rest", 40 - BalanceReserve(40, 25), 30);
-
     Console.WriteLine("-- antenna wake: batching");
     Eq("three alerts in one evaluation wake the antenna once", WakeBatch(3), "wake|send3|rest");
 
+%%SORT%%
     Console.WriteLine();
     Console.WriteLine(fails == 0 ? ("ALL " + checks + " CHECKS PASSED") : (fails + " of " + checks + " CHECKS FAILED"));
     return fails == 0 ? 0 : 1;
@@ -495,8 +504,11 @@ def main():
                  '.'.join(map(str, FIRST_VERSION))))
         return 0
 
+    want = ['alert-engine', 'alert-transport', 'alert-wake']
+    if ver >= SORTING_FROM:
+        want.append('sorting-budget')
     regions = []
-    for name in ('alert-engine', 'alert-transport', 'alert-wake', 'sorting-budget'):
+    for name in want:
         body = extract(src, name)
         # A missing or empty region means the suite is testing NOTHING. Say so and fail.
         if body is None or not body.strip():
@@ -515,7 +527,9 @@ def main():
     cs = os.path.join(tmp, 'alerts.cs')
     exe = os.path.join(tmp, 'alerts.exe')
     io.open(cs, 'w', encoding='utf-8', newline='').write(
-        HARNESS_HEAD + regions[0] + regions[1] + regions[2] + regions[3] + DRIVER)
+        HARNESS_HEAD + ''.join(regions)
+        + (DRIVER.replace(SORT_SLOT, DRIVER_SORT) if ver >= SORTING_FROM
+           else DRIVER.replace(SORT_SLOT, '')))
     p = subprocess.run([CSC, '-nologo', '-out:' + exe, cs],
                        capture_output=True, text=True)
     if p.returncode != 0:
