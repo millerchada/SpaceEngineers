@@ -2063,12 +2063,18 @@ void WriteScan(bool all) {
   if (un == 0) _sb.Append("(none)\n");
   else _sb.Append(un).Append(" unknown block(s) in ").Append(utot.Count)
     .Append(" definition(s)\n");
-  // Ready to paste. Every value is left at 0 on purpose: filling one in is a MEASUREMENT the
-  // player takes, not a number this script is willing to invent on their behalf.
+  // Deliberately NOT paste-ready. An earlier build emitted these with "=0" already filled in,
+  // which invites asserting that these blocks draw nothing on no evidence at all - the one
+  // thing this model refuses to do everywhere else, because an invented value inflates the
+  // model AND the coverage figure that is supposed to disclose the gap. The line is left
+  // incomplete so it cannot be pasted without a number being supplied deliberately, and zero
+  // is only correct once something has established it.
   if (_unkDefs.Count > 0) {
-    _sb.Append("\n-- paste into Custom Data ABOVE the report marker, then measure each one --\n");
-    _sb.Append("[").Append(SECCAT).Append("]\n");
-    foreach (var d in _unkDefs) _sb.Append(d).Append("=0\n");
+    _sb.Append("\n-- MEASURE each of these, then add it under [").Append(SECCAT)
+      .Append("] above the report marker.\n");
+    _sb.Append("-- Read the rated draw from an in-game block-info tool, or note network demand,\n");
+    _sb.Append("-- switch the block on, and note it again. A value of 0 is a finding, not a default.\n");
+    foreach (var d in _unkDefs) _sb.Append("   ").Append(d).Append(" = ?\n");
   }
 
   if (all) {
