@@ -1,5 +1,110 @@
 # IO Power Control — changelog
 
+## v0.1.5 — credible capacity: protection stops spending nameplate (2026-09-19)
+
+**Defect fix. Found by the first live reading of the pre-UAT baseline, before any shedding was
+attempted.** Protection decisions were taken against NAMEPLATE generation.
+
+    GenNameplate  58.6 MW      GenCurrent  14.5 MW      Reserve reported  44.1 MW
+    GenProven     19.4 MW      steam turbine delivering 9.92 MW of a 50 MW rating
+
+The protection engine believed it had 44 MW of headroom on a base whose entire generation
+system had ever demonstrated 19.4 MW, and whose sustainable ceiling is about 26 MW. The
+incident this script exists to prevent is demand exceeding *sustainable* generation - and on a
+fuel-fed producer that happens long before demand approaches the rating. A 50 MW steam turbine
+fed by a well good for 26 MW of steam will never read near 50 MW. **Nameplate is a rating, not
+a capability, and it must not be spent as reserve.**
+
+### Three figures
+
+    GenCurrent    what is flowing now                    exact
+    GenCredible   what there is EVIDENCE we can call on  protection spends this
+    GenNameplate  the sum of ratings                     display and theoretical capacity
+
+    credible_i = MaxOutput_i               environmental (solar, wind)
+               = max(proven_i, current_i)  fuel-fed, or unrecognised
+
+    Reserve = GenCredible - Demand
+    N-1     = GenCredible - largest credible_i - Demand
+
+Environmental producers are believed at their `MaxOutput` because that figure is already a
+capability: six solar panels on the test base reported three different values simultaneously by
+orientation, and the wind turbine moved between 3.19 and 5.46 MW across captures. Everything
+else is credited only what it has been witnessed to deliver, and an *unrecognised* producer is
+treated as fuel-fed because that is the conservative reading.
+
+`proven` is reset on a genuine offline->online transition: a producer that stopped and came
+back may have come back on a different fuel or steam supply, so what it proved beforehand is no
+longer evidence about what it can do now.
+
+### Stress: why credible reserve alone cannot authorise shedding
+
+On a grid that has never been loaded hard, credible is low purely for want of evidence -
+`proven` only grows when a producer is *asked* for more. Shedding on that would punish a base
+for being lightly used. So shedding now needs corroboration:
+
+    Stressed =  batteries are NET discharging above 0.1 MW
+             OR ( credible reserve is below the shed threshold
+                  AND every fuel-fed producer is pinned at what it has demonstrated
+                  AND credible capacity has not RISEN for StressHoldSeconds )
+
+The third clause is the discriminator. An earlier draft used "fuel-fed producer at >=99% of
+MaxOutput", which **would have failed on exactly the case being fixed** - a 50 MW turbine fed
+26 MW of steam never approaches 99% of its rating. Pinned at CREDIBLE, with credible no longer
+growing, is the observable difference between "demand is rising and being met" and "demand has
+reached the ceiling".
+
+`RequireStressToShed=true` by default; `StressHoldSeconds=10`.
+
+**Structural limit, stated rather than papered over:** on a grid with NO batteries, Demand is
+generator output plus net battery discharge, so demand can never exceed credible generation and
+reserve can never go negative. Such a grid can be seen to be AT its ceiling but never in
+deficit. The second stress clause is what makes a battery-less installation work without the
+escape hatch, and it is deliberately the conservative reading - no buffer means nothing absorbs
+an overload, so acting at the ceiling is right. Consumer-side brownout detection (a production
+block that `IsProducing` while receiving far less than it requires) is the real answer and is
+left for a later version.
+
+### Power Condition and Capacity Risk are now separate
+
+Merging them meant a base with thin demonstrated headroom reported WARNING permanently while
+being electrically fine, which teaches an operator to ignore the field that is supposed to
+interrupt them.
+
+    Power Condition   observed electrical strain. NORMAL unless actually stressed,
+                      whatever the headroom arithmetic says. Shedding keys off this.
+    Capacity Risk     contingency exposure: thin credible headroom, negative N-1.
+                      True of a lightly loaded base, worth showing, not an alarm.
+
+The test base now reads `Condition NORMAL` / `Capacity Risk WARNING`, which is the honest
+description of it. The ad-hoc "rated X but only Y ever delivered" banner is removed - Capacity
+Risk carries that message as a rated field, so the banner said it twice.
+
+### Restore threshold had to be capped, or staged restoration would never fire
+
+Moving protection onto credible capacity shrinks the scale every absolute MW threshold is
+measured against. Reserve's ceiling is now credible capacity itself, so a base with 19.4 MW
+credible **can never reach a 20 MW restore threshold at any demand** - restoration would have
+failed silently, which is worse than restoring slightly early because nothing in the log says
+it is happening.
+
+The cap is derived rather than invented: restoration must be reachable while still leaving the
+shed margin intact, so it is at most `credible - ShedReserveMW`, never below `ShedReserveMW + 2`
+so the hysteresis band always exists. The configured figure still applies wherever it is
+reachable, so a large base behaves exactly as before. `scan` prints both.
+
+### Deliberately unchanged
+
+`Potential` demand, the catalog, and the shedding engine itself. This is a capacity-model
+defect fix, not a feature change.
+
+### Left open
+
+An IO-specific *sustainable* capacity model - deriving the steam turbine's real ceiling from
+well depth via the formula in MOD_DEFINITIONS.md rather than waiting to witness it - is now
+possible and is the obvious next step. Not done here: it would replace evidence with
+inference, and the evidence-based model needs to be proven in game first.
+
 ## v0.1.4b — the catalog is no longer empty (2026-09-19)
 
 The Industrial Overhaul mod files were located on disk, which turns Tier 3 of the

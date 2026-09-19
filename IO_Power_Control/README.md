@@ -1,6 +1,6 @@
 # IO Power Control
 
-**IOPC v0.1.4** — power capacity, protection and automatic load shedding for Space Engineers,
+**IOPC v0.1.5** — power capacity, protection and automatic load shedding for Space Engineers,
 built against **Industrial Overhaul v1.7.7**.
 
 One script for both stations and ships. It answers four separate questions:
@@ -16,10 +16,10 @@ exceeding generation, and the whole base going down.
 
 ## Deploying
 
-    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.4.cs
-    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.4.cs
+    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.5.cs
+    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.5.cs
 
-Paste `IO_Power_Control_v0.1.4.min.cs` into a programmable block and recompile. The source is
+Paste `IO_Power_Control_v0.1.5.min.cs` into a programmable block and recompile. The source is
 ~81 k characters, which is under the PB's 100 k ceiling, but the artifact is what gets pasted
 — same as every other script in this repo.
 
@@ -178,7 +178,12 @@ Four separate things, deliberately:
 * **Mode** — `ECONOMY`, `NORMAL`, `REDALERT`, `EMERGENCY`. An operator decision, never
   inferred from an electrical condition.
 * **Power Condition** — `NORMAL`, `CAUTION`, `WARNING`, `CRITICAL`, `EMERGENCY`. An electrical
-  fact, never an operator decision.
+  fact, never an operator decision. Leaves `NORMAL` only when the system is **observably
+  stressed**, whatever the headroom arithmetic says. Shedding keys off this.
+* **Capacity Risk** — the same ladder applied to credible headroom, plus a negative N-1.
+  Contingency exposure rather than an alarm: a lightly loaded base can legitimately sit at
+  `Condition NORMAL / Capacity Risk WARNING`, and reporting that as a permanent WARNING would
+  only teach the operator to ignore it.
 
 Condition is evaluated on both an absolute MW reserve and a percentage of available
 generation, and the **worse of the two wins**. Percentage alone lies on a small ship; MW alone
@@ -277,10 +282,25 @@ generator output - which has risen to produce those 12 MW. Demand still rises, w
 entire point. Subtracting charging from demand would hide the exact load this script exists
 to catch.
 
-    Current Generation  = sum(CurrentOutput) of working non-battery producers
-    Available Generation= sum(MaxOutput)     of working non-battery producers
-    Current Reserve     = Available Generation - Current Demand
-    N-1 Reserve         = Available Generation - largest single producer - Current Demand
+    Current      = sum(CurrentOutput) of working producers              exact
+    Credible     = sum(credible_i)    - what protection spends
+    Nameplate    = sum(MaxOutput)     - a rating, NOT a capability
+    Reserve      = Credible - Current Demand
+    N-1 Reserve  = Credible - largest credible producer - Current Demand
+
+    credible_i = MaxOutput_i               environmental (solar, wind)
+               = max(proven_i, current_i)  fuel-fed, or unrecognised
+
+**Nameplate is never spent as reserve.** A 50 MW IO steam turbine fed by a well good for 26 MW
+of steam still advertises 50 MW; measured live, a base reported 44.1 MW of reserve while its
+entire generation system had ever demonstrated 19.4 MW. Solar and wind are believed at their
+`MaxOutput` because the game recomputes it from conditions; everything else is credited only
+what it has been witnessed to deliver, and an unrecognised producer is treated as fuel-fed.
+
+**Shedding additionally requires observed stress** - batteries net discharging, or generation
+pinned at its demonstrated ceiling with credible capacity no longer rising. Credible reserve is
+thin on a lightly used base purely for want of evidence, and shedding on that alone would
+punish a base for never having been loaded.
 
 With `CountBatteryDischarge` in effect, battery `MaxOutput` joins Available Generation and the
 dashboard marks it `+b`. Auto means yes on a ship, no on a station: a battery ship genuinely
