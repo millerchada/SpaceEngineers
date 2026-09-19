@@ -1,6 +1,6 @@
 # IO Power Control
 
-**IOPC v0.1.5** — power capacity, protection and automatic load shedding for Space Engineers,
+**IOPC v0.1.6** — power capacity, protection and automatic load shedding for Space Engineers,
 built against **Industrial Overhaul v1.7.7**.
 
 One script for both stations and ships. It answers four separate questions:
@@ -16,10 +16,10 @@ exceeding generation, and the whole base going down.
 
 ## Deploying
 
-    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.5.cs
-    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.5.cs
+    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.6.cs
+    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.6.cs
 
-Paste `IO_Power_Control_v0.1.5.min.cs` into a programmable block and recompile. The source is
+Paste `IO_Power_Control_v0.1.6.min.cs` into a programmable block and recompile. The source is
 ~81 k characters, which is under the PB's 100 k ceiling, but the artifact is what gets pasted
 — same as every other script in this repo.
 
@@ -297,10 +297,20 @@ entire generation system had ever demonstrated 19.4 MW. Solar and wind are belie
 `MaxOutput` because the game recomputes it from conditions; everything else is credited only
 what it has been witnessed to deliver, and an unrecognised producer is treated as fuel-fed.
 
-**Shedding additionally requires observed stress** - batteries net discharging, or generation
-pinned at its demonstrated ceiling with credible capacity no longer rising. Credible reserve is
-thin on a lightly used base purely for want of evidence, and shedding on that alone would
-punish a base for never having been loaded.
+**Shedding additionally requires observed stress**, which is one of:
+
+* batteries **net discharging** above 0.1 MW, or
+* generation pinned at its demonstrated ceiling, credible capacity no longer rising for
+  `StressHoldSeconds`, **and demand risen at least `ShedReserveMW` above its recent floor**.
+
+Credible reserve is thin on a lightly used base purely for want of evidence, and shedding on
+that alone would punish a base for never having been loaded. The demand-pressure term is not
+optional garnish: without it, a cold-started healthy station has `credible == current` and a
+structurally zero reserve, and the gate fires on a timer. That defect reached a live server.
+
+Witnessed producer output is persisted in `Storage`, keyed by `EntityId`, so a paste-deploy does
+not discard evidence that took a base under load to acquire. A rebuilt producer gets a new id
+and correctly starts proving itself again.
 
 With `CountBatteryDischarge` in effect, battery `MaxOutput` joins Available Generation and the
 dashboard marks it `+b`. Auto means yes on a ship, no on a station: a battery ship genuinely

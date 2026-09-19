@@ -1,5 +1,86 @@
 # IO Power Control — changelog
 
+## v0.1.6 — the stress gate was two tautologies and a timer (2026-09-19)
+
+**Defect fix, caught at UAT step R1 before any load was ramped.** A healthy, steady station
+reported:
+
+    Condition=NORMAL  Stressed=False  CapacityRisk=CRITICAL
+    FuelAtCeiling=True  CredFlatFor=1.80s
+    GenCredible=16.5MW  GenProven=16.5MW  GenCur=16.5MW  Demand=16.5MW  Reserve=0.00MW
+
+**That station was 8.2 seconds away from shedding 5 MW of perfectly good production.** At
+`CredFlatFor >= StressHoldSeconds` the ceiling clause would have gone true, Condition would
+have followed reserve to CRITICAL, `DeepestTier` would have reached Normal, and `DoShed` would
+have targeted `4 - 0 + 1 = 5 MW`. `AutoShed` was off on the server, which is the only reason it
+did not happen.
+
+### Why it was degenerate
+
+For a fuel-fed producer `credible = max(proven, current)`. At a cold start proven EQUALS
+current, so:
+
+    cur < cred - 0.1  is false for every producer  ->  _fuelAtCeiling TRUE by construction
+    reserve = SUM(cred_i - cur_i) - battNetOut     ->  0.00       by construction
+
+Two of the three ceiling conditions were satisfied by arithmetic rather than evidence, and the
+third was a hold timer. The gate was never testing anything.
+
+The rule as requested always included **evidence of sustained or rising demand**. v0.1.5
+substituted "credible capacity is flat" for that, which is not the same claim - a stable base
+has flat everything. That substitution was the defect.
+
+### DEMAND PRESSURE is now an explicit term
+
+    _demandFloor drops instantly to any lower demand, and creeps up toward a higher one at
+    2% per cycle (about a one-minute time constant).
+    rise = Demand - _demandFloor
+    the ceiling clause additionally requires rise >= ShedReserveMW
+
+A step increase shows as a gap; a steady load closes that gap within about a minute and
+accumulates no pressure at all. On the baseline above, `rise` converges to 0 and the clause can
+never fire. On a sudden 12 MW load it reads ~9.8 MW at the ten-second mark, which is pressure.
+
+Consequence worth knowing: on a battery-less grid, ceiling stress lapses roughly a minute after
+a step even if the overload persists, because the floor catches up. With batteries the discharge
+clause carries it indefinitely. This is the same structural limit recorded in v0.1.5 - demand
+cannot exceed credible generation on a battery-less grid by construction - and consumer-side
+brownout detection remains the real answer.
+
+### Witnessed capacity now survives a recompile
+
+v0.1.4 had witnessed ~19.4 MW. Installing v0.1.5 restarted `proven` at the then-current
+16.5 MW, which is precisely what produced `credible == current == demand` and a reserve of
+exactly zero. Evidence that takes a working base under load to acquire must not be discarded by
+a paste-deploy.
+
+Per-producer proven output is now persisted in `Storage` (`P|entityId|MW`, capped at 200) beside
+the learned consumer catalog and the shed list, and `Save()` is called every 60 s - until now it
+ran only on a mode change, shed, restore or scan, so a base that never shed checkpointed
+nothing.
+
+Keyed by `EntityId`, which is the right granularity in both directions: it survives a recompile
+and a world reload, while a producer that is ground down and rebuilt gets a new id and correctly
+starts proving itself again.
+
+The offline->online reset introduced in v0.1.5 now fires only for a stop this session actually
+**witnessed**. On a world reload a block can read not-working for a moment before it settles,
+and treating that as a genuine stop would have discarded the figures just restored from Storage.
+
+### Capacity Risk is labelled when there is no evidence
+
+Zero credible headroom is indistinguishable from headroom that has never been measured, and
+CRITICAL asserts knowledge we do not have. The arithmetic is unchanged and still shown - the
+separation of Power Condition from Capacity Risk is working as designed - but the field now
+carries a `?` while no producer has been seen to deliver more than it is delivering now, and
+`scan` prints `HeadroomEvidence=measured|NONE` in as many words.
+
+### Unchanged
+
+The capacity model, the shedding engine, `Potential`, the catalog. No fuel/steam sustainable
+model: that remains the next modelling improvement, after basic protection behaviour is proven
+safe.
+
 ## v0.1.5 — credible capacity: protection stops spending nameplate (2026-09-19)
 
 **Defect fix. Found by the first live reading of the pre-UAT baseline, before any shedding was
