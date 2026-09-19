@@ -9,10 +9,19 @@ that script does, how to set it up, and its block tags and configuration.
 | Folder | What it is |
 |---|---|
 | [IO_Production_Manager](IO_Production_Manager/) | **IOPM** — warehouse sorting and balancing, production planning, stall recovery, dock-aware logistics, ship loadout servicing. The main project. |
+| [IO_Power_Control](IO_Power_Control/) | **IOPC** — power capacity, protection and automatic load shedding: generation vs demand, potential-demand model with published coverage, per-grid attribution, protected systems, role/mode policy, hysteretic shedding and progressive recovery. |
 | [IO_Item_Identity_Dump](IO_Item_Identity_Dump/) | Read-only. Lists every item's real `TypeId/SubtypeId` with totals. **Run this before trusting any item identity.** |
 | [IO_Blueprint_Sniffer](IO_Blueprint_Sniffer/) | Read-only. Captures the real blueprint `MyDefinitionId`s the game actually uses. |
 | [Endless_Drill](Endless_Drill/) | Endless Drill Mk1 — walking-drill controller (rotor / piston / welder cycle). |
 
+
+## The mod's definition files are readable
+
+[MOD_DEFINITIONS.md](MOD_DEFINITIONS.md) - Industrial Overhaul's own `.sbc` and `.cs` files are
+on disk on this machine. Recipes, yields, item identities, machine coverage and block power
+figures are all declared there, and reading them is minutes rather than deploy cycles. Generate
+from the files, then VERIFY against the game - a definition is the declared state, the game is
+the actual state. Read this before discovering game data empirically again.
 
 ## Repository layout
 

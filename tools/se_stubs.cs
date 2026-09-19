@@ -15,8 +15,14 @@ using System.Collections.Generic;
 
 namespace Sandbox.ModAPI.Ingame {
 
+  // VERIFIED THE HARD WAY (2026-09-19, in-game compile): MyDefinitionId.TypeId is a
+  // VRage.ObjectBuilders.MyObjectBuilderType STRUCT, not a string. This file described it as
+  // a string, so `d.TypeId == null ? "" : d.TypeId` compiled locally and the GAME reported
+  // "Operator '==' is ambiguous" and "no implicit conversion between 'string' and
+  // 'MyObjectBuilderType'". Use TypeId.ToString(). MyItemType.TypeId below IS a string - the
+  // two are different types and only this one is a struct.
   public struct MyDefinitionId {
-    public string TypeId { get { return null; } }
+    public VRage.ObjectBuilders.MyObjectBuilderType TypeId { get { return default(VRage.ObjectBuilders.MyObjectBuilderType); } }
     public string SubtypeId { get { return null; } }
     public string SubtypeName { get { return null; } }
     public static bool TryParse(string s, out MyDefinitionId id) { id = default(MyDefinitionId); return false; }
@@ -72,6 +78,7 @@ namespace Sandbox.ModAPI.Ingame {
   public interface IMyCubeGrid {
     string CustomName { get; set; }
     long EntityId { get; }
+    bool IsStatic { get; }
   }
 
   public interface IMyInventory {
@@ -103,6 +110,7 @@ namespace Sandbox.ModAPI.Ingame {
     IMyComponentContainer Components { get; }
     string CustomName { get; set; }
     string CustomData { get; set; }
+    string DetailedInfo { get; }
     long EntityId { get; }
     bool IsWorking { get; }
     bool IsFunctional { get; }
@@ -160,16 +168,89 @@ namespace Sandbox.ModAPI.Ingame {
     string HudText { get; set; }
   }
 
+
+  // ---------------------------------------------------------------------------------------
+  // POWER. Added for IO_Power_Control. Verified shapes:
+  //   Sandbox.ModAPI.Ingame.IMyPowerProducer : IMyFunctionalBlock
+  //     float CurrentOutput {get;}   float MaxOutput {get;}       -- both in MW
+  //   Sandbox.ModAPI.Ingame.IMyBatteryBlock : IMyPowerProducer
+  //     CurrentStoredPower/MaxStoredPower (MWh), CurrentInput/MaxInput (MW),
+  //     ChargeMode {get;set;}, IsCharging {get;}, HasCapacityRemaining {get;}
+  //   Sandbox.ModAPI.Ingame.ChargeMode = { Auto, Recharge, Discharge }
+  // There is NO ingame interface for a power CONSUMER and no per-block consumption property.
+  // DetailedInfo (above) is the only per-block electrical figure the PB API exposes at all.
+  public interface IMyPowerProducer : IMyFunctionalBlock {
+    float CurrentOutput { get; }
+    float MaxOutput { get; }
+  }
+
+  public enum ChargeMode { Auto, Recharge, Discharge }
+
+  public interface IMyBatteryBlock : IMyPowerProducer {
+    float CurrentStoredPower { get; }
+    float MaxStoredPower { get; }
+    float CurrentInput { get; }
+    float MaxInput { get; }
+    ChargeMode ChargeMode { get; set; }
+    bool IsCharging { get; }
+    bool HasCapacityRemaining { get; }
+  }
+
+  public interface IMySolarPanel : IMyPowerProducer { }
+
+  public interface IMyJumpDrive : IMyFunctionalBlock {
+    float CurrentStoredPower { get; }
+    float MaxStoredPower { get; }
+  }
+
+  // Ship control. GetShipSpeed() is the only velocity figure used here: it avoids pulling
+  // VRageMath.Vector3D into the stubs for a single magnitude.
+  public interface IMyShipController : IMyTerminalBlock {
+    bool IsUnderControl { get; }
+    bool IsMainCockpit { get; set; }
+    bool CanControlShip { get; }
+    double GetShipSpeed();
+  }
+  public interface IMyRemoteControl : IMyShipController { }
+
+  public interface IMyThrust : IMyFunctionalBlock {
+    float MaxEffectiveThrust { get; }
+    float MaxThrust { get; }
+    float CurrentThrust { get; }
+  }
+  public interface IMyGyro : IMyFunctionalBlock { }
+  public interface IMyShipMergeBlock : IMyFunctionalBlock { bool IsConnected { get; } }
+  public interface IMyAirVent : IMyFunctionalBlock { bool CanPressurize { get; } float GetOxygenLevel(); }
+  public interface IMyGasTank : IMyFunctionalBlock { double FilledRatio { get; } bool Stockpile { get; set; } }
+  public interface IMyLightingBlock : IMyFunctionalBlock { }
+  public interface IMyDoor : IMyFunctionalBlock { }
+  public interface IMyBeacon : IMyFunctionalBlock { }
+  public interface IMyLaserAntenna : IMyFunctionalBlock { }
+  public interface IMySensorBlock : IMyFunctionalBlock { }
+  public interface IMyCameraBlock : IMyFunctionalBlock { }
+  public interface IMyOreDetector : IMyFunctionalBlock { }
+  public interface IMyProjector : IMyFunctionalBlock { }
+  public interface IMyGravityGeneratorBase : IMyFunctionalBlock { }
+  public interface IMyConveyorSorter : IMyFunctionalBlock { }
+  public interface IMyTimerBlock : IMyFunctionalBlock { }
+  public interface IMyMotorSuspension : IMyFunctionalBlock { }
+  public interface IMyPistonBase : IMyFunctionalBlock { }
+  public interface IMyMotorBase : IMyFunctionalBlock { }
+  public interface IMyMotorStator : IMyMotorBase { }
+  public interface IMyUpgradeModule : IMyFunctionalBlock { }
+  public interface IMyTextPanel : IMyTerminalBlock, IMyTextSurface, IMyTextSurfaceProvider { }
+  public interface IMyMedicalRoom : IMyFunctionalBlock { }
+
   public interface IMyCargoContainer : IMyTerminalBlock { }
   public interface IMyShipDrill : IMyTerminalBlock { }
   public interface IMyShipToolBase : IMyTerminalBlock { }
   public interface IMyShipWelder : IMyShipToolBase { }
   public interface IMyShipGrinder : IMyShipToolBase { }
-  public interface IMyReactor : IMyTerminalBlock { }
+  public interface IMyReactor : IMyPowerProducer { bool UseConveyorSystem { get; set; } }
   public interface IMyGasGenerator : IMyTerminalBlock { }
   public interface IMyUserControllableGun : IMyTerminalBlock { }
   public interface IMyLargeTurretBase : IMyUserControllableGun { }
-  public interface IMyCockpit : IMyTerminalBlock { }
+  public interface IMyCockpit : IMyShipController { }
   public interface IMyCollector : IMyTerminalBlock { }
   public interface IMyParachute : IMyTerminalBlock { }
 
@@ -267,6 +348,25 @@ namespace Sandbox.ModAPI.Ingame {
     public void Echo(string text) { }
     public string Storage { get; set; }
   }
+}
+
+// Blocks that live in SpaceEngineers.Game.ModAPI.Ingame rather than Sandbox.ModAPI.Ingame.
+// The game's PB wrapper has a using for this namespace; check_pb.py's preamble now does too.
+namespace VRage.ObjectBuilders {
+  // Opaque on purpose: the point of this shape is that it is NOT a string and cannot be
+  // compared to null, so a script that treats it as one fails HERE instead of in the game.
+  public struct MyObjectBuilderType {
+    public override string ToString() { return null; }
+  }
+}
+
+namespace SpaceEngineers.Game.ModAPI.Ingame {
+  using Sandbox.ModAPI.Ingame;
+  public interface IMyLandingGear : IMyFunctionalBlock { bool IsLocked { get; } bool IsParkingEnabled { get; set; } }
+  public interface IMyOxygenFarm : IMyFunctionalBlock { }
+  public interface IMyAirtightHangarDoor : IMyDoor { }
+  public interface IMyOxygenGenerator : IMyGasGenerator { }
+  public interface IMyOxygenTank : IMyGasTank { }
 }
 
 namespace VRage.Game.ModAPI.Ingame { }
