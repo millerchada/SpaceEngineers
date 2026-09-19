@@ -1,5 +1,60 @@
 # IO Power Control — changelog
 
+## v0.1.9 — Capacity Risk debounce (2026-09-19)
+
+**Telemetry-only fix.** Nothing in this change touches stress detection, the battery stress
+thresholds, brownout logic, shedding, the credible-generation math or restore behaviour.
+
+### The Phase A observation run PASSED
+
+Normal and heavy cyclic factory operation, roughly 5 MW through repeated 28 MW demand:
+
+* `Stressed=False` throughout
+* no `ELECTRICAL STRESS` events
+* brownout count stayed **0**
+* battery stayed full; the heavy-load period showed `bflow=0.00 MW`
+* generation followed demand without battery support
+
+That is the first stress detector in this project to survive real cyclic industry. Notably the
+battery never had to support the load at all during the heavy period, so what was rejected was
+not marginal: the detector had nothing to fire on and correctly fired on nothing. The 0.1 MW
+instantaneous test in v0.1.6 would have triggered on the earlier 4.54 MW support pulses; the
+three-part test did not.
+
+### The one defect: Capacity Risk chattered
+
+The event log flipped `WARNING <-> CRITICAL` every few seconds as instantaneous credible
+reserve moved between ~0 and a few MW across ordinary production cycles. Every individual
+crossing was true. The sequence was still noise, and an advisory field that shouts several
+times a minute stops being read - the same failure mode as the permanent WARNING fixed in
+v0.1.5, arriving from the other direction.
+
+**Asymmetric debounce, deliberately:**
+
+    candidate WORSE than current    promote after CapacityRiskPromoteSeconds   default 2s
+    candidate BETTER than current   clear after  CapacityRiskRecoverSeconds    default 15s
+    candidate CHANGES               the clock restarts
+
+Getting worse is news and should arrive quickly; getting better is a claim that has to hold up,
+because a momentary trough in demand is not a recovery. Restarting the clock on any change of
+candidate is what stops a value oscillating across a threshold from ever committing - during
+cycling the field settles at the **worse** of the two, which is the correct bias for a risk
+indicator.
+
+Timing comes from the accumulated clock, not a count of invocations, so it does not depend on
+the tick landing at exactly 1 Hz.
+
+Events are logged **only on a committed change**, and carry how long the new value was held.
+The instantaneous crossings are deliberately silent - they are what made the log unreadable.
+
+`scan` exposes `CapacityRisk`, `Candidate` and `CandidateHeld=<held>/<required>s` so the
+debounce can be diagnosed rather than guessed at.
+
+### Unchanged
+
+Everything else, explicitly. No steam/H2 sustainable-capacity model - that remains the next
+modelling step, after the battery stress transition has been proven under a deliberate overload.
+
 ## v0.1.8 — one battery-flow sign convention (2026-09-19)
 
 Found during the Phase A observation run: the same 4.54 MW battery-support pulse read **+4.54

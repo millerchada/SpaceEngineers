@@ -1,6 +1,6 @@
 # IO Power Control
 
-**IOPC v0.1.8** — power capacity, protection and automatic load shedding for Space Engineers,
+**IOPC v0.1.9** — power capacity, protection and automatic load shedding for Space Engineers,
 built against **Industrial Overhaul v1.7.7**.
 
 One script for both stations and ships. It answers four separate questions:
@@ -16,10 +16,10 @@ exceeding generation, and the whole base going down.
 
 ## Deploying
 
-    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.8.cs
-    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.8.cs
+    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.9.cs
+    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.9.cs
 
-Paste `IO_Power_Control_v0.1.8.min.cs` into a programmable block and recompile. The source is
+Paste `IO_Power_Control_v0.1.9.min.cs` into a programmable block and recompile. The source is
 ~81 k characters, which is under the PB's 100 k ceiling, but the artifact is what gets pasted
 — same as every other script in this repo.
 
@@ -181,6 +181,11 @@ Four separate things, deliberately:
   fact, never an operator decision. Leaves `NORMAL` only when the system is **observably
   stressed**, whatever the headroom arithmetic says. Shedding keys off this.
 * **Capacity Risk** — the same ladder applied to credible headroom, plus a negative N-1.
+  Debounced asymmetrically: a worse value promotes after `CapacityRiskPromoteSeconds` (2s), a
+  better one must hold for `CapacityRiskRecoverSeconds` (15s), and any change of candidate
+  restarts the clock — so a value oscillating across a threshold during ordinary production
+  cycles settles at the worse of the two instead of chattering. Events are logged only on a
+  committed change.
   Contingency exposure rather than an alarm: a lightly loaded base can legitimately sit at
   `Condition NORMAL / Capacity Risk WARNING`, and reporting that as a permanent WARNING would
   only teach the operator to ignore it.

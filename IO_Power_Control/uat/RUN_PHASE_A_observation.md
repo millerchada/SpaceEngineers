@@ -67,7 +67,48 @@ production cycles, including at least one trough where WireDrawer and CementKiln
    recompile this deployment causes? Check `GenProven` is not back at `GenCur` after the paste —
    that would mean the `P|` Storage records are not working.
 
+## RESULT: PASS (v0.1.8, 2026-09-19)
+
+Normal and heavy cyclic factory operation, roughly **5 MW through repeated 28 MW demand**,
+including sustained 19-28 MW cycling.
+
+| Check | Result |
+|---|---|
+| `Stressed` held False throughout | **PASS** |
+| `ELECTRICAL STRESS` events | **none** |
+| Brownout count | **0 throughout** |
+| Battery | stayed full; heavy-load period showed `bflow=0.00 MW` |
+| Generation followed demand | yes, without battery support |
+
+The detector had nothing to fire on during the heavy period - generation tracked demand and the
+battery never had to support the load - and it correctly fired on nothing. Earlier in the run
+the same build saw repeated ~4.54 MW support pulses with no stress, no brownout and no
+stored-energy decline; the v0.1.6 instantaneous 0.1 MW test would have triggered on every one.
+
+**One defect found, advisory telemetry only:** `CapacityRisk` chattered `WARNING <-> CRITICAL`
+every few seconds as instantaneous credible reserve crossed thresholds during ordinary cycles.
+Every crossing was individually true, but the sequence was noise. Fixed in **v0.1.9** with an
+asymmetric debounce; no protection behaviour was involved or changed.
+
+**Also found and fixed in v0.1.8:** battery flow was reported in two opposite sign conventions,
+so the same support pulse read +4.54 in the fast ring and -4.54 in the history of one scan.
+
+## Next run
+
+`AutoShed=false` still. Two objectives, in order:
+
+1. **Confirm the chatter is gone** under unchanged factory cycling. `scan` now prints
+   `CapacityRisk / Candidate / CandidateHeld` so the debounce can be read directly rather than
+   inferred from the event log.
+2. **Then force a real overload** - enough sustained load to drive genuine battery discharge -
+   and watch the battery stress transition: `bout` above the bar, `held` climbing toward
+   `StressHoldSeconds`, and `storedDecline` reaching what is required. This is the first time
+   any stress signal will be asked to fire *positively*, and the first evidence about whether
+   0.5 MW / 10 s / 0.5% are the right numbers.
+
 ## Results
+
+
 
 | Capture | Time | Stressed seen? | Brownout count | Max bnet / duration | stored fell? | Notes |
 |---|---|---|---|---|---|---|
