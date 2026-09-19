@@ -1,71 +1,61 @@
 # UAT run — station shedding and recovery
 
-Script **v0.1.4**, checkpoint `b02fd6a`. IO 1.7.7 test station, survival mode.
-Station only. **No docked ship in this run.**
+Script **v0.1.5** (`bedfa87`). Pre-UAT checkpoint `b02fd6a`. IO 1.7.7 test station, survival.
+Station only — **no docked ship in this run.**
 
-## Why the deficit is made on the generation side
+Supersedes the first draft of this sheet, which created the deficit by switching the steam
+turbine off. That is no longer necessary: v0.1.5 measures reserve against **credible** capacity,
+so the base can reach its own real ceiling under load and the test is faithful to the incident.
 
-With the steam turbine online, `Available` reads the nameplate **59.9 MW** while the entire
-drawable load of this base is about 30 MW (18.5 MW of rated production + 12 MW of battery
-recharge). Reserve cannot get near the 4 MW shed threshold, so **automatic shedding could not
-fire at all** — not because the engine is broken, but because the metric it tests is a rating
-rather than a capability. That is limitation 6, and it is the single largest open risk for
-running `AutoShed=true` on the production server.
+## Baseline, and what v0.1.5 should now report
 
-Switching the steam turbine off makes `Available` collapse to what wind, solar and the hydrogen
-engine can really deliver, which is a figure the base *can* exceed. It is also the exact
-incident class this script exists for — a generator lost while industry is running — so the
-test is more faithful this way, not less.
+Live figures before the ramp (from the 16:xx capture that triggered the v0.1.5 fix):
 
-**No configuration changes are needed.** Every threshold stays at its default; only `AutoShed`
-is toggled, which is what step 1 asks for. That matters: a test that only passes under
-hand-tuned thresholds proves less than one that passes under the shipped ones.
+    GenCurrent     14.5 MW
+    GenCredible    19.4 MW    wind 3.63 + solar ~0.9 at MaxOutput; steam 13.5 + H2 1.35 proven
+    GenNameplate   58.6 MW
+    Demand         14.5 MW
+    Credible Reserve  4.9 MW  (v0.1.4 reported 44.1 MW against nameplate)
+    N-1              -8.6 MW  (19.4 - 13.5 largest credible - 14.5)
 
-## Baseline (from the 16:17:46 scan, v0.1.4)
+Predicted dashboard at rest:
 
-    Available (nameplate)   59.9 MW     Steam turbine 50.0 + hydrogen 5.0 + wind ~3.8 + solar ~1.1
-    Real steam capacity     25.9 MW     well at 1378.9 m: 0.024 x (1378.9 - 300) = 25.9
-    Battery                 3.00 MWh, 12.0 MW max in/out
-    Resting demand          ~2.0 MW     blast furnace 2.00 + antenna 0.02
-    Production available    18.5 MW rated, idle
+    Condition        NORMAL       not stressed: batteries net 0, reserve 4.9 >= shed 4
+    Capacity Risk    WARNING      reserve <= 8 MW, and N-1 negative
+    RestoreThreshold 15.4 MW      capped from 20 to stay reachable (19.4 - 4)
 
-Rated production, from the live scan (all `src=detail`):
+**A permanent WARNING on Condition would be a FAIL.** That separation is the whole point of the
+second half of the fix.
 
-    SiliconFuser 3.5 | CementKiln 3.0 | LargeRefinery 3.0 | Blast Furnace 2.0
-    LargeAssemblerNew 1.5 | WireDrawer 1.5 | Extruder 1.5 | PlateStamp 1.5 | Fabricator 1.0
+## Known caveat to watch for — `proven` can capture a burst
 
-Blocks that MUST NOT be shed at any point in this run, and why:
+The steam turbine holds a 100 L steam buffer. Under a sudden load it can briefly deliver more
+than the well sustains, and `proven` is a high-water mark, so it would record the burst and
+credit it permanently. **Credible may therefore overstate a fuel-buffered producer after a
+transient.**
 
-    Air Vent, Medical Room          LifeSupport  - Critical tier AND runtime-protected
-    Programmable Block x2           Control      - Critical tier AND runtime-protected
-    Geothermal Wellhead             Generation   - Critical; feeds the turbine
-    Steam Buffer Tank 2             Generation   - Critical; feeds the turbine
-    Small Hydrogen Tank             Fuel         - Essential
-    Compact Radio Antenna           Comms        - Essential
-    Sliding / Hatch doors           Decor        - Discretionary BUT zero measured draw,
-                                                   so zero relief, so never a candidate
+Watch for this at step 5: if the turbine peaks well above ~26 MW and then settles back, record
+both figures. It does not invalidate the fix — credible is still far below nameplate — but it
+is a real limit of "witnessed output" as evidence, and it decides whether a future version needs
+a sustained-output measure rather than a peak.
 
-## Predicted behaviour, derived before the run
+## Derived expectations
 
-Derived from the policy table and the shipped thresholds, so a mismatch is a real finding
-rather than a moved goalpost.
+Steam ceiling from the mod source (MOD_DEFINITIONS.md), well at 1378.9 m, no interference:
 
-| Phase | Available | Demand | Reserve | Condition | Deepest tier | Expected |
-|---|---|---|---|---|---|---|
-| S2 baseline | 59.9 | ~2.0 | ~57.9 | NORMAL | Discretionary | nothing |
-| S3 production on | 59.9 | ~10.5 | ~49.4 | NORMAL | Discretionary | nothing shed, `AutoShed=false` |
-| S5 turbine off | ~9.3 | ~10.5 | ~-1.2 | **CRITICAL** | **Normal** | shed begins |
-| S6 after shed | ~9.3 | ~4.0 | ~5.3 | WARNING | Industrial | shedding STOPS |
-| S10 turbine on | 59.9 | ~4.0 | ~55.9 | NORMAL | Discretionary | recovery timer starts |
+    sustained MW = 0.024 x (1378.9 - 300) = 25.9 MW
 
-Shed arithmetic for S6, to check the engine against: target is
-`ShedReserveMW - reserve + 1` = `4 - (-1.2) + 1` = **6.2 MW**. Candidates are all Production
-(Industrial tier), sorted by relief descending, so SiliconFuser (3.5) then CementKiln (3.0)
-= 6.5 MW clears it and the engine should stop at **two items**, not four.
+So credible capacity should converge on roughly:
 
-Restore threshold is 20 MW, unreachable while the turbine is off (Available 9.3) — so recovery
-must **hold** through S6-S9 and only begin once generation returns. That is deliberate: it
-tests the hold as well as the release.
+    wind ~3.6 + solar ~1.0 + steam ~25.9 + hydrogen up to 5.0   =  ~35.5 MW
+
+Available load on this base:
+
+    production 18.5 MW rated + resting ~2 MW + battery recharge 12 MW  =  ~32.5 MW
+
+**32.5 MW of load against ~35.5 MW of credible capacity is not quite a deficit.** If the ramp
+tops out without stress appearing, switch the **hydrogen engine** off to drop credible by ~5 MW.
+That is the planned escalation, not an improvisation.
 
 ---
 
@@ -73,124 +63,120 @@ tests the hold as well as the release.
 
 Record for each: setup, expected, actual, dashboard values, event lines, PASS/FAIL, defect.
 
-### S1 — AutoShed off
+### R0 — Control for the "only restores what it shed" test
 
-Set `AutoShed=false` in the PB Custom Data. Recompile is not needed; it is re-read on the next
-rescan (≤30 s).
+Before anything else, **manually switch one assembler off yourself** (WireDrawer suggested) and
+note which. It must never be touched by the script.
 
-* **Expect:** dashboard unchanged, no shed activity possible.
+### R1 — AutoShed off, agreement check
 
-### S2 — Metrics agree with the game
+Set `AutoShed=false`. Confirm dashboard against the game's power panel:
 
-Compare dashboard against the game's own power panel and the terminal:
+* `Current` vs the game's total output
+* `Nameplate` vs the sum of online producer maxima — expect ~58.6 MW
+* `Credible` — expect ~19.4 MW, **and this is the number protection now spends**
+* `Reserve Credible` vs `vs Nameplate` — expect ~4.9 and ~44.1; the gap is the defect that was fixed
+* `Condition NORMAL`, `Capacity Risk WARNING`
+* Run `scan`: check `Stressed=False`, `FuelAtCeiling`, `CredFlatFor`, `RestoreThreshold`
 
-* `GENERATION / Current` vs the game's total output
-* `Available` vs the sum of online producer maxima
-* `DEMAND / Current` vs the game's consumption
-* `BATTERY / Stored`, `Net Flow`, `Recharge Exposure` vs the battery terminal
-* `Proven` — expect it to be at or just above Current, since it is a running high-water mark
-* Run `scan`; confirm `Reserve = Available - Demand` and `N-1 = Available - largest - Demand`
+### R2 — Ramp demand, in steps, pausing 30 s
 
-* **Expect:** all agree within rounding. Coverage ~77 %, 5 unknown in 4 definitions.
+Start production progressively — roughly 3 MW at a time. Suggested order: Blast Furnace,
+CementKiln, SiliconFuser, LargeRefinery, then the smaller assemblers.
 
-### S3 — Production load rises sensibly
+* **Expect:** as each machine starts, the steam turbine is asked for more, its `proven` rises,
+  and **`Credible` rises with it**. Reserve should stay roughly flat rather than collapsing.
+* **This is the core proof that the model grows with demonstrated output** and does not shed a
+  base merely for being lightly used.
+* **Expect no shedding** — `AutoShed` is still false, and `Stressed` should remain False while
+  credible keeps rising.
 
-Start **SiliconFuser, CementKiln and Blast Furnace** (already running) with real work queued.
+### R3 — Enable AutoShed partway up
 
-* **Expect:** demand climbs toward ~10.5 MW. Each machine shows `cur=` near its `max=` in
-  `scan`'s `== CONSUMERS BY DEFINITION ==`. Possibly one `LOAD SPIKE` event — and **only one**,
-  not a repeat per cycle.
-* **Nothing is shed** — `AutoShed` is still false. This step proves the engine is inert when
-  told to be.
+With perhaps half the production running, set `AutoShed=true`.
 
-### S4 — Enable AutoShed
+* **Expect:** nothing happens. Credible is still rising, so `Stressed=False`.
+* **FAIL if:** anything sheds while credible capacity is still growing.
 
-Set `AutoShed=true`. Nothing should happen yet: reserve is ~49 MW.
+### R4 — Push through the steam ceiling
 
-* **Expect:** no shedding, no events. A script that sheds here has a threshold defect.
+Continue starting production. If needed, set the battery to **Recharge** (+12 MW), then switch
+off the **hydrogen engine** (−5 MW credible).
 
-### S5 — Create the deficit
+* **Expect:** the steam turbine plateaus near ~26 MW, `proven` stops rising, `Credible` goes
+  flat, `CredFlatFor` starts counting.
 
-**Switch the steam turbine OFF** in the terminal.
+### R5 — Stress becomes true
 
-* **Expect:** `GENERATOR OFFLINE Steam Turbine - Mirrored -50.0 MW` event. Available drops to
-  ~9.3 MW. Reserve goes negative. Condition walks to **CRITICAL**. Battery begins net discharge.
+* **Expect:** `ELECTRICAL STRESS` event, naming either "batteries carrying X MW" or "generation
+  at demonstrated ceiling". `Condition` leaves NORMAL. Battery goes net-discharging.
+* Record the **credible capacity and demand at the moment stress appears.**
 
-### S6 — Shedding
+### R6 — Shedding operates at the real limit
 
-* **Expect:** `LOAD SHEDDING 2 item(s)` with two `shed <name> [Production] -X MW` lines,
-  **largest draw first** (SiliconFuser then CementKiln). Demand falls to ~4 MW, reserve to
-  ~+5.3 MW, and **shedding then stops** — reserve is back above the 4 MW trigger.
-* **FAIL if:** more than 4 items in one cycle; any non-Production block shed; shedding
-  continues after reserve recovers; an idle machine shed for zero relief.
+* **Expect:** shedding begins with demand somewhere near **30–35 MW**, not near the 58.6 MW
+  nameplate. Production sheds largest-draw-first, at most 4 per cycle, and stops once credible
+  reserve is back above 4 MW.
+* **This is the headline result of the whole fix.** Under v0.1.4 nothing would have shed at all.
+* **FAIL if:** shedding only begins near nameplate, or never begins.
 
-### S7 — Protection held
+### R7 — Protection held
 
-Run `scan all` and inspect.
+`scan all`. Every one of these still `enabled=True`:
 
-* **Expect:** every block in the must-not-shed list above still `enabled=True`, and flagged
-  `RUNPROT` where applicable. `Currently Shed` = 2.
+    Air Vent, Medical Room                LifeSupport, runtime-protected
+    Programmable Block x2                 Control, runtime-protected
+    Geothermal Wellhead, Steam Buffer Tank  Generation - feeds the turbine
+    Small Hydrogen Tank                   Fuel
+    Compact Radio Antenna                 Comms
+    WireDrawer (your R0 block)            must remain off, and absent from SHED STATE
 
-### S8 — Reserve recovered
+### R8 — Recovery holds
 
-* **Expect:** `RESERVE / Current` positive (~5.3 MW), condition improved to WARNING,
-  `LAST ACTION` naming the shed.
+Leave it shed for 2 minutes.
 
-### S9 — Recovery holds while capacity is low
+* **Expect:** nothing restored while credible reserve is below `RestoreThreshold` (printed by
+  `scan`). A `Restore held:` event is acceptable and informative.
 
-Wait 2 minutes with the turbine still off.
+### R9 — Release the overload
 
-* **Expect:** **nothing is restored.** Reserve ~5.3 MW is below the 20 MW restore threshold.
-  Possibly a `Restore held:` event. This is the hysteresis band doing its job.
-* **FAIL if:** anything is restored while reserve is below the restore threshold.
+Take the battery off Recharge, and/or restart the hydrogen engine.
 
-### S10 — Restore generation
+* **Expect:** `Generator returned` if the engine comes back, **and its `proven` resets to 0** —
+  it must re-prove itself. Credible dips then recovers as it delivers again.
 
-**Switch the steam turbine back ON.**
+### R10 — Staged restoration
 
-* **Expect:** `Generator returned` event. Available returns to 59.9 MW, reserve to ~55.9 MW.
-  Recovery timer starts — and **nothing restores for 30 s**.
+* **Expect:** 30 s of healthy reserve, then **one item per 10 s**, LIFO so the last shed comes
+  back first. Two or more `RESTORED` events with ~10 s spacing.
+* **FAIL if:** everything restores in one cycle, or restoration starts before the delay.
 
-### S11 — Staged restoration
+### R11 — Only script-shed blocks restored
 
-* **Expect:** one item restored, then the second **10 s later** — not both together. LIFO
-  order, so CementKiln (shed last) comes back first. Two `RESTORED <name>` events, timestamps
-  ~10 s apart.
-* **FAIL if:** both restore in the same cycle, or restoration begins before 30 s have elapsed.
-
-### S12 — Only script-shed blocks restored
-
-Before S5, manually switch **one assembler off yourself** (e.g. WireDrawer) and note it.
-
-* **Expect:** it is **never** switched on by the script, and never appears in `== SHED STATE ==`.
-  `Currently Shed` returns to 0 with your block still off.
-* **FAIL if:** the script enables a block it did not shed. This is the most important negative
-  result in the run.
+* **Expect:** `Currently Shed` returns to 0 with your R0 assembler **still off**, and never
+  named in any `RESTORED` event.
 
 ---
 
 ## Results
 
-_To be filled in as each step is run._
-
 | Step | Pass/Fail | Notes |
 |---|---|---|
-| S1 | | |
-| S2 | | |
-| S3 | | |
-| S4 | | |
-| S5 | | |
-| S6 | | |
-| S7 | | |
-| S8 | | |
-| S9 | | |
-| S10 | | |
-| S11 | | |
-| S12 | | |
+| R0 | | |
+| R1 | | |
+| R2 | | |
+| R3 | | |
+| R4 | | |
+| R5 | | |
+| R6 | | |
+| R7 | | |
+| R8 | | |
+| R9 | | |
+| R10 | | |
+| R11 | | |
 
 ## Deferred to later runs
 
 Locked-connector protection, docked-ship detection, docked battery recharge exposure,
 docked-ship shedding, Red Alert reprioritisation, PB recompile with loads shed, and world
-restart persistence. None require this run to pass first except the two that depend on shedding
-working at all (docked shedding, and restart-with-loads-shed).
+restart persistence.
