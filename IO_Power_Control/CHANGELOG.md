@@ -1,5 +1,47 @@
 # IO Power Control — changelog
 
+## v0.1.8 — one battery-flow sign convention (2026-09-19)
+
+Found during the Phase A observation run: the same 4.54 MW battery-support pulse read **+4.54
+in the fast ring and -4.54 in the history of the same scan**, both columns labelled "net".
+
+Not intentional. Three places reported battery flow in two opposite conventions:
+
+    fast ring  BattNet = _battNetOut       Sum(max(0, out-in))   discharge POSITIVE, clamped
+    history    Net     = _battIn - _battOut                      charge POSITIVE
+    dashboard  Net Flow= _battIn - _battOut                      charge POSITIVE
+
+Since `Sum(in) - Sum(out)` is exactly `-Sum(out - in)`, those were negatives of one another and
+neither label said which way round it was. `_battNetOut` was added for the demand-accounting fix
+in v0.1.4 and the older displays were never revisited.
+
+**One convention from here: positive means power LEAVING the batteries** - discharge - matching
+the direction protection cares about. Every display now states it in the label.
+
+Two related quantities remain, and they are **not** the same on a mixed bank, so both are shown
+rather than one being inferred:
+
+    NetFlow = Sum(out_i - in_i)          signed; negative while charging
+    NetOut  = Sum(max(0, out_i - in_i))  clamped per battery; what demand and the stress
+                                         detector use, because one battery discharging while
+                                         another charges really is supplying the grid
+
+On a single-battery grid they coincide whenever the bank is discharging, which is precisely why
+the discrepancy presented as a clean sign flip rather than as two different measurements.
+
+The fast ring now carries `bflow` and `bout` side by side; both ring headers state the sign
+convention in as many words.
+
+**One deliberate data change:** history samples recorded before this build hold the opposite
+sign, so a scan captured across the upgrade will show the flip mid-ring. Nothing else is
+affected - no protection decision ever used the history or dashboard figure.
+
+### Phase A observation, interim
+
+No stress events, no brownouts, no stored-energy decline, across repeated ~4.54 MW
+battery-support pulses. The three-part battery test is rejecting exactly what it was built to
+reject. Run continues.
+
 ## v0.1.7 — Phase A: both false-positive paths removed, evidence collected instead (2026-09-19)
 
 **Defect fix.** v0.1.6 still declared electrical stress on a healthy, naturally cycling IO
