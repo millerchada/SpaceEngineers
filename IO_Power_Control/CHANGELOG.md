@@ -78,6 +78,28 @@ timer was the gating condition. The operator's arithmetic corrects an earlier cl
 ~36 s I stated - 36 s corresponds to 1.5 MW. Thresholds are deliberately **not** being retuned
 on one negative and one positive case.
 
+### Re-test result: both fixes PASS
+
+Same 32 MW jump drive, battery re-enabled from the preserved 2.78 MWh state. Detected in 10.5 s
+at a 4.71 MW drain; **latched through ~90 s of deficit varying between 4.2 and 7.7 MW with every
+fast-ring sample `S`** - the exact variation that cleared the alarm under v0.1.9. On removal,
+`Condition` recovered immediately with electrical reserve while `Stressed` stayed latched for
+the full 15 s confirmation, then cleared. Brownout `confirmed=0, raw=0`; the deleted jump drive
+never became a confirmed brownout.
+
+**Phase A detection is complete.** Proven negative (cyclic factory, transients, zero reserve)
+and positive (32 MW step), with a working latch and recovery hold. No known defects outstanding
+in the detection path.
+
+### Known scaling limit, recorded before arming
+
+Detection latency is `(StoredDeclinePercent/100 x MaxStored) / deficit`. On the 3 MWh test bank
+at 4.71 MW that is ~11 s, matching the measured 10.5 s. On a **300 MWh** bank at a 5 MW deficit
+it would be **18 minutes**. The stored-decline term is expressed as a fraction of capacity, and
+what it actually needs to verify is that stored energy is falling *consistently with the
+reported drain* - a scale-free test. Harmless on the test base; must be fixed before AutoShed
+is armed on a large production base.
+
 ### Unchanged
 
 Entry thresholds, capacity model, shedding engine, `Potential`, catalog, CapacityRisk debounce.

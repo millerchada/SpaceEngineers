@@ -157,6 +157,82 @@ cause: `_bi` is rebuilt only by `Discover()` on the `RescanSeconds` boundary, so
 persists in the cache for up to 30 s. Good evidence that brownout must not become authority
 from a single cached observation.
 
+## v0.1.10 RE-TEST — PASS (2026-09-19, AutoShed=false)
+
+Battery re-enabled from the preserved 2.78 MWh state, same temporary 32 MW jump drive
+installed, overload allowed to run ~90 s, then the jump drive deleted.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Positive detection | **PASS** |
+| 2 | Stress latch through a sustained, varying deficit | **PASS** — the v0.1.9 failure |
+| 3 | Recovery hold | **PASS** |
+| 4 | Deleted-block brownout guard | **PASS** (see caveat) |
+
+**Positive detection.** Demand ~60-63 MW against GenCur/GenCredible ~55.3-55.4 MW, battery
+deficit ~4.2-7.7 MW.
+
+    19:29:21  LOAD SPIKE to 60.0 MW (+29.0 MW)
+    19:29:23  Capacity risk WARNING -> CRITICAL
+    19:29:31  ELECTRICAL STRESS - batteries draining 4.71 MW for 10.5s, stored down 0.02 MWh
+    19:29:31  Power condition NORMAL -> CRITICAL
+
+**Latch.** ~90 s of sustained overload, fast-ring discharge varying 4.2-7.7 MW, **every sample
+`S`**, no spurious clear/reassert cycle. Under v0.1.9 this same variation cleared the alarm.
+
+**Recovery.** Jump drive deleted, load back to ~27-31 MW, discharge to zero:
+
+    19:31:09  Power condition CRITICAL -> NORMAL
+    19:31:25  Electrical stress cleared - drain under 0.55 MW for 15.2s
+    19:31:25  Capacity risk CRITICAL -> WARNING ... held 15.2s
+
+`Condition` recovered **immediately** with electrical reserve while `Stressed` stayed latched
+for the full 15 s confirmation. That separation is the intended design: reserve is an instant
+fact, recovery is a claim that has to hold.
+
+Final: `Stressed=False`, `BattNetOut=0.00`, `BattRecoverBar=0.55`, `recoverHeld=26.8/15.0s`,
+`ShedAuthority=NONE`. Battery ended ~2.60/3.00 MWh, then deliberately disabled to preserve the
+post-UAT state. Base remains power-positive without it (7.22 MW required / 55.82 MW available).
+
+**Brownout.** `confirmed=0, raw=0`. The transient `raw=1` was not reproduced on this deletion,
+so the guard is proven only in the negative direction - nothing became confirmed. That is the
+outcome that matters, but it is not a positive demonstration that the freshness rule fires.
+
+---
+
+## PHASE A: COMPLETE
+
+Detection is proven in **both** directions on a battery-equipped station:
+
+    negative   cyclic factory, ~4.54 MW transients, heavy production at zero reserve
+    positive   32 MW step load, detected in ~10 s
+    latch      held through 90 s of 4.2-7.7 MW varying deficit
+    recovery   cleared 15 s after the deficit ended, not before
+
+No known defects outstanding in the detection path.
+
+### What Phase A did NOT prove
+
+1. **Nothing has ever been shed.** The entire actuator path - candidate selection, live
+   protection re-validation, hysteresis, staged restore - has never executed, except the
+   accidental v0.1.5 shed of the Ore Purifier.
+2. **One battery only.** Every battery figure has been exercised against a single 3 MWh /
+   12 MW unit. The per-battery net clamping exists precisely for a mixed bank where one
+   battery charges while another discharges, and that case is entirely untested.
+3. **The stored-decline term does not scale.** Detection latency is
+   `(StoredDeclinePercent/100 x MaxStored) / deficit`. On this 3 MWh bank at 4.71 MW that is
+   ~11 s, matching the measured 10.5 s. On a **300 MWh** bank at a 5 MW deficit it would be
+   **18 minutes**. See the recommendation below - this must be addressed before AutoShed is
+   armed on the production base, though it is harmless here.
+4. **Brownout freshness fires correctly** - unproven in the positive direction.
+5. Docking, Red Alert, ship role, restart-with-loads-shed: untouched.
+
+### Outstanding state
+
+The Ore Purifier is still in `SHED STATE` from the v0.1.5 false shed. It has now served its
+purpose as persistence evidence across four recompiles and should be cleared with
+`run "recover"` before any armed test, so the shed list starts empty.
+
 ## Next run (v0.1.10)
 
 `AutoShed=false` still. Re-run scenario 4 - install the jump drive again - and confirm:
