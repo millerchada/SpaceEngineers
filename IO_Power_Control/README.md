@@ -1,6 +1,6 @@
 # IO Power Control
 
-**IOPC v0.1.6** — power capacity, protection and automatic load shedding for Space Engineers,
+**IOPC v0.1.7** — power capacity, protection and automatic load shedding for Space Engineers,
 built against **Industrial Overhaul v1.7.7**.
 
 One script for both stations and ships. It answers four separate questions:
@@ -16,10 +16,10 @@ exceeding generation, and the whole base going down.
 
 ## Deploying
 
-    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.6.cs
-    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.6.cs
+    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.7.cs
+    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.7.cs
 
-Paste `IO_Power_Control_v0.1.6.min.cs` into a programmable block and recompile. The source is
+Paste `IO_Power_Control_v0.1.7.min.cs` into a programmable block and recompile. The source is
 ~81 k characters, which is under the PB's 100 k ceiling, but the artifact is what gets pasted
 — same as every other script in this repo.
 
@@ -297,16 +297,27 @@ entire generation system had ever demonstrated 19.4 MW. Solar and wind are belie
 `MaxOutput` because the game recomputes it from conditions; everything else is credited only
 what it has been witnessed to deliver, and an unrecognised producer is treated as fuel-fed.
 
-**Shedding additionally requires observed stress**, which is one of:
+**Shedding additionally requires observed stress**, and in this build there is exactly one
+qualifying signal: **sustained battery drain**, which must satisfy all three of
 
-* batteries **net discharging** above 0.1 MW, or
-* generation pinned at its demonstrated ceiling, credible capacity no longer rising for
-  `StressHoldSeconds`, **and demand risen at least `ShedReserveMW` above its recent floor**.
+* net discharge >= `max(BattStressMW, 2% of credible)` — default 0.5 MW,
+* held **continuously** for `StressHoldSeconds` (the timer restarts on any dip), and
+* stored energy actually fallen by >= `StoredDeclinePercent` of capacity over that interval.
 
-Credible reserve is thin on a lightly used base purely for want of evidence, and shedding on
-that alone would punish a base for never having been loaded. The demand-pressure term is not
-optional garnish: without it, a cold-started healthy station has `credible == current` and a
-structurally zero reserve, and the gate fires on a timer. That defect reached a live server.
+With no qualifying signal, nothing is shed and the dashboard says `OBSERVATION ONLY` rather
+than sitting silent.
+
+Two earlier stress signals were removed after both fired on a healthy station. A demand-floor
+heuristic followed troughs rather than trend, so ordinary cyclic IO production re-pinned the
+floor on every idle period and the next processing cycle read as a new rising load. And an
+instantaneous 0.1 MW net-discharge test could not distinguish a real drain from the control
+oscillation of a bank reporting ~11 MW gross out against ~12 MW gross in — 0.22 MW for a few
+seconds is 0.01% of a 3 MWh bank, below the resolution at which stored energy is displayed.
+
+**Brownout detection** (`Enabled && IsFunctional && !IsWorking`) is collected as telemetry and
+reported by `scan`, but does **not** authorise shedding. It is the most promising signal — it
+observes unmet demand directly and would work on a battery-less grid — but it will not be
+trusted until live evidence shows which blocks report `IsWorking=false` for non-power reasons.
 
 Witnessed producer output is persisted in `Storage`, keyed by `EntityId`, so a paste-deploy does
 not discard evidence that took a base under load to acquire. A rebuilt producer gets a new id

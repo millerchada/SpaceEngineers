@@ -1,5 +1,87 @@
 # IO Power Control — changelog
 
+## v0.1.7 — Phase A: both false-positive paths removed, evidence collected instead (2026-09-19)
+
+**Defect fix.** v0.1.6 still declared electrical stress on a healthy, naturally cycling IO
+factory. Live capture:
+
+    Condition=CRITICAL  Stressed=True  CredFlatFor=222.6s
+    Demand=12.0MW  DemandFloor=7.70MW  DemandRise=4.30MW
+    GenCur=12.0MW  GenCredible=12.0MW  Reserve=0.00MW  BattNetOut=0.00MW
+
+Active production at the snapshot: WireDrawer 1.5 MW, CementKiln 3.0 MW, RockCrusher x2 5.0 MW.
+Ordinary cyclic work, no overload.
+
+### The demand-floor clause is deleted, not tuned
+
+It followed troughs rather than trend: the floor dropped **instantly** to any lower demand and
+crept back at 2% per cycle. IO production cycles between active and idle, so every trough
+re-pinned the floor and the next ordinary processing cycle read as a new rising load.
+`DemandRise 4.30` was the entire gap `12.00 - 7.70`, meaning the floor had been reset within
+the previous sample.
+
+From a trough, `gap(n) = 4.30 x 0.98^n` at 1 Hz, so `rise >= 4 MW` holds for **the first ~3.6
+seconds after every trough**. With `reserve == 0` and `FuelAtCeiling == true` both cold-start
+tautologies and `CredFlatFor` long past, **every production cycle asserted stress.** No
+threshold fixes that. A trough-follower structurally cannot distinguish cyclic industry from a
+new load, so the clause is gone and is not replaced with another demand-baseline heuristic.
+
+### Instantaneous battery net output is no longer stress
+
+The second false-positive path, from the event log: `ELECTRICAL STRESS - batteries carrying
+0.22 MW`. That is 0.0003 MWh against a 3.00 MWh bank - **0.01%**, an order of magnitude below
+the resolution at which stored energy is even displayed, and indistinguishable from the control
+oscillation of a bank reporting ~11 MW gross out against ~12 MW gross in.
+
+Battery stress now requires all three, together:
+
+    material   net discharge >= max(BattStressMW, 2% of credible generation)   default 0.5 MW
+    sustained  held CONTINUOUSLY for StressHoldSeconds - the timer restarts on any dip
+    draining   stored energy actually fell >= StoredDeclinePercent of capacity  default 0.5%
+
+The energy-decline term is what rejects the oscillation: a bank moving no net energy cannot
+make stored energy fall, however its gross figures read.
+
+### Brownout detection added as TELEMETRY ONLY
+
+    Enabled && IsFunctional && !IsWorking
+
+For most block types that is a block switched on, undamaged, and not getting the power it asked
+for - a direct observation of unmet demand that needs no demand trend and no battery, and so
+would work on a battery-less grid, which nothing currently can. `scan` reports the count, and
+per block the name, definition, category and whether it is protected or was shed by the script.
+
+**It does not authorise shedding.** Promoting it on the strength of the idea would repeat the
+exact mistake this commit exists to correct. First we need live evidence of which IO and
+vanilla blocks report `IsWorking=false` for reasons unrelated to power; anything listed that is
+not short of power is a false positive, and the Phase A run exists to find them.
+
+### Instrumentation: the evidence did not exist at any resolution we recorded
+
+A three-second battery excursion was being mistaken for stress, and the only history was
+sampled every ten seconds. `scan` now dumps:
+
+* a **1 Hz, 60-sample fast ring**: age, Demand, GenCurrent, GenCredible, BattNetOut,
+  BatteryStored, brownout count, Stressed
+* the existing **10-second history** ring, last 90 samples
+
+plus `BattStressBar`, how long the drain has been held against the requirement, the stored
+decline against the decline needed, and `ShedAuthority`.
+
+### Fail conservative, and say so
+
+Sustained battery drain is the **only** shedding authority in this build. With no qualifying
+signal, `Stressed=False` and `AutoShed` does nothing - and the dashboard says
+`OBSERVATION ONLY / no trustworthy overload signal present; nothing will be shed` rather than
+sitting silent, because an operator who has switched AutoShed on is entitled to know it is not
+going to act.
+
+### Unchanged
+
+Capacity model, shedding engine, `Potential`, catalog. No steam/H2 sustainable-capacity model.
+The Ore Purifier left in `SHED STATE` from the v0.1.5 false shed is deliberately untouched: it
+is evidence that per-block shed state survived two recompiles.
+
 ## v0.1.6 — the stress gate was two tautologies and a timer (2026-09-19)
 
 **Defect fix, caught at UAT step R1 before any load was ramped.** A healthy, steady station
