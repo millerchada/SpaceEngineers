@@ -1,5 +1,88 @@
 # IO Power Control — changelog
 
+## v0.1.10 — stress latch, and a brownout freshness guard (2026-09-19)
+
+Two defects from the full v0.1.9 Phase A UAT. Entry thresholds and all passing v0.1.9
+behaviour are untouched.
+
+### DEFECT: established stress cleared during a sustained real deficit
+
+Live at 19:02:24, with a 32 MW jump drive still installed and the battery still discharging:
+
+    19:02:24  Electrical stress cleared
+    19:02:24  Power condition CRITICAL -> NORMAL
+    19:02:54  ELECTRICAL STRESS - batteries draining 2.54 MW for 16.3s, stored down 0.02 MWh
+
+History across the gap: `bflow` 4.80, 4.92, 2.20, 2.45, 5.69 MW with stored falling
+2.86 -> 2.82 MWh. **Nothing had recovered.**
+
+**Cause: there was no latch.** `now` was the ENTRY test recomputed every cycle and assigned
+straight to `_stressed`. One tick below the bar reset *both* accumulated qualifications:
+`if (!material) _battStressSince = -1e9;` restarted the hold timer, and the next material tick
+re-captured `_battStoredAtStress` at the by-then-lower stored level, so the 0.015 MWh decline
+also had to be re-earned from a fresh baseline. A momentary dip - demand touching generation
+during a production trough, invisible between 10-second history samples - discarded twenty
+seconds of accumulated evidence, and the re-assert 30 s later is the system earning the whole
+qualification again from zero.
+
+**Fix: entry and exit are different questions.** Entry asks "is there a deficit worth acting
+on"; exit asks "has it actually recovered". Requiring the entry qualification to remain
+continuously true in order to stay latched conflates the two, and ordinary variation between a
+2 MW and a 5 MW deficit is not a recovery.
+
+    ENTRY  unchanged: material discharge, held continuously for StressHoldSeconds,
+           and a confirmed stored-energy decline
+    EXIT   drain below BattRecoverFraction x the entry bar (default 0.5, so ~0.59 MW on the
+           test base) held continuously for StressRecoverSeconds (default 15s)
+
+While latched, the reported decline is the cumulative drain since entry rather than being reset
+to zero, so the scan shows how deep the episode has become.
+
+### DEFECT: brownout counted a deleted block
+
+`br=1` for roughly 14 seconds immediately after the temporary jump drive was deleted, then 0
+with an empty list at the next scan. **Confirmed from the code:** `_bi` is rebuilt only inside
+`Discover()`, which runs on the `RescanSeconds` boundary, so a deleted block stays in the
+cached list for up to 30 seconds and can keep reporting
+`Enabled && IsFunctional && !IsWorking`.
+
+**Fix: survive a topology refresh.** A block only counts once it has been continuously browned
+out for longer than a full rescan interval, which it can only manage if `Discover()` found it
+again. A deleted block is not in the rebuilt list, so its age never accrues. Both figures are
+reported - `raw` is what a naive detector would have seen, and the gap between raw and confirmed
+is itself the argument for why this signal is not yet allowed to authorise anything.
+
+This is good evidence for the existing decision: **brownout stays telemetry only.**
+
+### v0.1.9 Phase A UAT results
+
+| Scenario | Result |
+|---|---|
+| CapacityRisk debounce under normal cycling | **PASS** - one committed transition, held 2.33s, no spam |
+| Normal cyclic production, incl. 4.54 MW transients | **PASS** - no stress, no brownout, no decline |
+| Heavy real production, ~27-32 MW, zero reserve | **PASS** - zero reserve alone did not trigger stress |
+| Controlled overload: 32 MW jump drive, 60-63 MW demand | **PASS** - first true positive detection |
+| Recovery after the jump drive was removed | **PASS** |
+| Established stress during sustained deficit | **FAIL** - fixed above |
+| Brownout after block deletion | **FAIL** - fixed above |
+
+The positive detection captured at the transition:
+
+    Demand 60.0  GenCur 58.3  GenCredible 58.3  Reserve -1.72
+    BattNetOut 1.72  BattStressBar 1.17  held 26.5/10.0s  storedDecline 0.02/0.02 MWh
+    ShedAuthority=battery-drain
+
+**Detection latency was ~20 s, not 10 s**, and the stored-decline term rather than the hold
+timer was the gating condition. The operator's arithmetic corrects an earlier claim of mine:
+0.5% of a 3.00 MWh bank is 0.015 MWh, which at a 0.5 MW deficit takes **108 seconds**, not the
+~36 s I stated - 36 s corresponds to 1.5 MW. Thresholds are deliberately **not** being retuned
+on one negative and one positive case.
+
+### Unchanged
+
+Entry thresholds, capacity model, shedding engine, `Potential`, catalog, CapacityRisk debounce.
+No steam/H2 sustainable-capacity model.
+
 ## v0.1.9 — Capacity Risk debounce (2026-09-19)
 
 **Telemetry-only fix.** Nothing in this change touches stress detection, the battery stress

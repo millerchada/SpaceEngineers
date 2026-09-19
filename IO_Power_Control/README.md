@@ -1,6 +1,6 @@
 # IO Power Control
 
-**IOPC v0.1.9** — power capacity, protection and automatic load shedding for Space Engineers,
+**IOPC v0.1.10** — power capacity, protection and automatic load shedding for Space Engineers,
 built against **Industrial Overhaul v1.7.7**.
 
 One script for both stations and ships. It answers four separate questions:
@@ -16,10 +16,10 @@ exceeding generation, and the whole base going down.
 
 ## Deploying
 
-    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.9.cs
-    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.9.cs
+    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.10.cs
+    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.10.cs
 
-Paste `IO_Power_Control_v0.1.9.min.cs` into a programmable block and recompile. The source is
+Paste `IO_Power_Control_v0.1.10.min.cs` into a programmable block and recompile. The source is
 ~81 k characters, which is under the PB's 100 k ceiling, but the artifact is what gets pasted
 — same as every other script in this repo.
 
@@ -309,6 +309,12 @@ qualifying signal: **sustained battery drain**, which must satisfy all three of
 * held **continuously** for `StressHoldSeconds` (the timer restarts on any dip), and
 * stored energy actually fallen by >= `StoredDeclinePercent` of capacity over that interval.
 
+Once stress is **established**, it latches. Exit is a different question from entry: the drain
+must fall below `BattRecoverFraction` x the entry bar and stay there for `StressRecoverSeconds`.
+Requiring the entry qualification to remain continuously true would mean ordinary variation
+between a 2 MW and a 5 MW deficit clears an active alarm — which it did, on a live station,
+while a 32 MW load was still connected and the battery was still draining.
+
 With no qualifying signal, nothing is shed and the dashboard says `OBSERVATION ONLY` rather
 than sitting silent.
 
@@ -320,7 +326,12 @@ oscillation of a bank reporting ~11 MW gross out against ~12 MW gross in — 0.2
 seconds is 0.01% of a 3 MWh bank, below the resolution at which stored energy is displayed.
 
 **Brownout detection** (`Enabled && IsFunctional && !IsWorking`) is collected as telemetry and
-reported by `scan`, but does **not** authorise shedding. It is the most promising signal — it
+reported by `scan`, but does **not** authorise shedding. A block must stay browned out for
+longer than a full rescan interval before it is even counted: the block list is rebuilt only by
+`Discover()`, so a **deleted** block lingers in it for up to 30 s and will happily report
+enabled-but-not-working — observed live when a deleted jump drive produced a phantom count for
+~14 s. `scan` reports raw and confirmed counts separately, and the gap between them is the
+argument for why this signal is not yet trusted. It is the most promising signal — it
 observes unmet demand directly and would work on a battery-less grid — but it will not be
 trusted until live evidence shows which blocks report `IsWorking=false` for non-power reasons.
 

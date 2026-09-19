@@ -106,6 +106,67 @@ so the same support pulse read +4.54 in the fast ring and -4.54 in the history o
    any stress signal will be asked to fire *positively*, and the first evidence about whether
    0.5 MW / 10 s / 0.5% are the right numbers.
 
+## FULL PHASE A RESULT (v0.1.9, 2026-09-19) — AutoShed=false throughout
+
+| # | Scenario | Result |
+|---|---|---|
+| 1 | CapacityRisk debounce under normal cycling | **PASS** |
+| 2 | Normal cyclic production, incl. ~4.54 MW battery transients | **PASS** |
+| 3 | Heavy real production ~27-32 MW at zero reserve | **PASS** |
+| 4 | Controlled overload - 32 MW jump drive, 60-63 MW demand | **PASS** |
+| 5 | Recovery after jump drive removal | **PASS** |
+| 6 | Established stress during sustained deficit | **FAIL** → fixed v0.1.10 |
+| 7 | Brownout after block deletion | **FAIL** → fixed v0.1.10 |
+
+**1. Debounce.** One committed transition only:
+`18:24:55 Capacity risk NORMAL -> WARNING, credible reserve 11.3 MW, N-1 -9.99 MW, held 2.33s`.
+Held WARNING under normal cycling thereafter. No spam.
+
+**3. Zero reserve is not stress.** Demand 32.0, GenCur 32.0, GenCredible 32.0, Reserve 0.00,
+BattNetOut 0.00, Stored 3.00, `Stressed=False`, `Brownout=0`. Steam turbine ~25.9 MW, H2 ~2.6 MW.
+The controller correctly waited for a demonstrated deficit rather than acting on arithmetic.
+
+**4. First true positive.** Jump drive drew 32.0 MW, total demand 60-63 MW against ~58.3 MW of
+saturated generation (steam 50.0, H2 5.0, wind+solar ~3.3). Battery supplied the deficit.
+
+    Demand 60.0  GenCur 58.3  GenCredible 58.3  Reserve -1.72
+    BattNetOut 1.72  BattStressBar 1.17  held 26.5/10.0s  storedDecline 0.02/0.02 MWh
+    ShedAuthority=battery-drain  Brownout=0
+
+    18:59:44  LOAD SPIKE to 60.0 MW (+29.0 MW)
+    18:59:47  Capacity risk WARNING -> CRITICAL
+    19:00:04  ELECTRICAL STRESS - batteries draining 1.71 MW for 19.8s, stored down 0.02 MWh
+    19:00:04  Power condition NORMAL -> CRITICAL
+
+Fast ring showed sustained 1.7-4.7 MW discharge, stored 3.00 -> 2.98 MWh.
+
+**Latency finding:** ~20 s, not 10 s. The hold was satisfied first; the **stored-decline term
+was the gating condition**. 0.5% of 3.00 MWh = 0.015 MWh, which at 0.5 MW takes 108 s and at
+1.5 MW takes 36 s. Thresholds NOT retuned - one negative and one positive case is directional
+evidence, not a distribution.
+
+**5. Recovery.** Jump drive deleted, demand fell to ~28-31 MW, BattNetOut 0,
+`19:03:32 Electrical stress cleared` / `Power condition CRITICAL -> NORMAL`. Battery finished at
+2.78/3.00 MWh and was deliberately disabled afterwards to preserve the evidence.
+
+**6. The defect.** See CHANGELOG v0.1.10 for the full diagnosis. In short: no latch, and a
+single sub-bar tick reset both the hold timer and the stored-decline baseline.
+
+**7. Brownout stale topology.** `br=1` for ~14 s after the jump drive was deleted. Confirmed
+cause: `_bi` is rebuilt only by `Discover()` on the `RescanSeconds` boundary, so a deleted block
+persists in the cache for up to 30 s. Good evidence that brownout must not become authority
+from a single cached observation.
+
+## Next run (v0.1.10)
+
+`AutoShed=false` still. Re-run scenario 4 - install the jump drive again - and confirm:
+
+* stress **latches** through the whole deficit with no spurious clear, however the deficit varies;
+* `recoverHeld` appears in `scan` and counts only while the drain is genuinely low;
+* stress clears ~15 s after the jump drive is removed, not instantly - the delay is the latch
+  working, not a fault;
+* brownout `raw` may briefly show 1 on deletion, but `confirmed` must stay **0**.
+
 ## Results
 
 
