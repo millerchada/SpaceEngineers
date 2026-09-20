@@ -335,18 +335,56 @@ namespace Sandbox.ModAPI.Ingame {
   public class MyGridProgramRuntimeInfo {
     public UpdateFrequency UpdateFrequency { get; set; }
     public int CurrentInstructionCount { get { return 0; } }
-    public int MaxInstructionCount { get { return 0; } }
+    public int MaxInstructionCount { get { return 50000; } }
     public TimeSpan TimeSinceLastRun { get { return TimeSpan.Zero; } }
     public double LastRunTimeMs { get { return 0; } }
   }
 
+  // Minimal stand-ins so a TEST can construct and run a Program. The real game supplies these;
+  // returning null was fine while the only job was compiling, but the constructor reads
+  // Me.CustomData and writes Runtime.UpdateFrequency, so both must exist to run anything.
+  public class StubProgrammableBlock : IMyProgrammableBlock {
+    public IMyComponentContainer Components { get { return null; } }
+    public string CustomName { get; set; }
+    public string CustomData { get; set; }
+    public string DetailedInfo { get { return ""; } }
+    public long EntityId { get; set; }
+    public bool IsWorking { get { return true; } }
+    public bool IsFunctional { get { return true; } }
+    public bool Enabled { get; set; }
+    public bool HasInventory { get { return false; } }
+    public int InventoryCount { get { return 0; } }
+    public IMyCubeGrid CubeGrid { get; set; }
+    public MyDefinitionId BlockDefinition { get { return default(MyDefinitionId); } }
+    public IMyInventory GetInventory(int index) { return null; }
+    public bool IsSameConstructAs(IMyTerminalBlock other) { return true; }
+    public IMyTextSurface GetSurface(int index) { return null; }
+    public int SurfaceCount { get { return 0; } }
+    public StubProgrammableBlock() { CustomName = "PB"; CustomData = ""; EntityId = 1; }
+  }
+
+  public class StubGridTerminalSystem : IMyGridTerminalSystem {
+    public void GetBlocks(List<IMyTerminalBlock> blocks) { if (blocks != null) blocks.Clear(); }
+    public void GetBlocksOfType<T>(List<T> blocks, Func<T, bool> collect = null) where T : class {
+      if (blocks != null) blocks.Clear();
+    }
+    public IMyTerminalBlock GetBlockWithName(string name) { return null; }
+    public IMyTerminalBlock GetBlockWithId(long id) { return null; }
+  }
+
   // The shape the game wraps a PB script in.
   public abstract class MyGridProgram {
-    public IMyGridTerminalSystem GridTerminalSystem { get { return null; } }
-    public IMyProgrammableBlock Me { get { return null; } }
-    public MyGridProgramRuntimeInfo Runtime { get { return null; } }
+    public IMyGridTerminalSystem GridTerminalSystem { get; set; }
+    public IMyProgrammableBlock Me { get; set; }
+    public MyGridProgramRuntimeInfo Runtime { get; set; }
     public void Echo(string text) { }
     public string Storage { get; set; }
+    protected MyGridProgram() {
+      GridTerminalSystem = new StubGridTerminalSystem();
+      Me = new StubProgrammableBlock();
+      Runtime = new MyGridProgramRuntimeInfo();
+      Storage = "";
+    }
   }
 }
 

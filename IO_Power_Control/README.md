@@ -1,6 +1,6 @@
 # IO Power Control
 
-**IOPC v0.1.12** — power capacity, protection and automatic load shedding for Space Engineers,
+**IOPC v0.1.13** — power capacity, protection and automatic load shedding for Space Engineers,
 built against **Industrial Overhaul v1.7.7**.
 
 One script for both stations and ships. It answers four separate questions:
@@ -14,12 +14,21 @@ It exists because of a specific failure: a station processing ore, a ship under 
 alongside it, enough of that ship coming online that its load joined the base, demand
 exceeding generation, and the whole base going down.
 
+## Tests
+
+    python IO_Power_Control/tests/test_shed_authorization.py IO_Power_Control/IO_Power_Control_v0.1.13.cs
+
+Runs the script rather than only compiling it: the shed-authorisation assertions construct the
+state a live base would be in and call `ShedStep()` directly. Point it at an older version to
+see an assertion fail — v0.1.12 fails `NEGATIVE_stale_latch_no_live_drain`, which is how that
+defect was established before it was fixed.
+
 ## Deploying
 
-    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.12.cs
-    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.12.cs
+    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.13.cs
+    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.13.cs
 
-Paste `IO_Power_Control_v0.1.12.min.cs` into a programmable block and recompile. The source is
+Paste `IO_Power_Control_v0.1.13.min.cs` into a programmable block and recompile. The source is
 ~81 k characters, which is under the PB's 100 k ceiling, but the artifact is what gets pasted
 — same as every other script in this repo.
 
@@ -520,8 +529,8 @@ Shedding triggers below `ShedReserveMW` (default 4 MW) and targets getting back 
 which cost five blocks and 47.5 MW on a 12 MW deficit, because two charging jump drives absorbed
 every megawatt freed and the reserve figure never moved.
 
-After the first action, continuation is re-authorised from the **live** drain against the stress
-bar, never from the latched `Stressed` flag: the latch is deliberately slow to clear so the
+**Every** shed action is authorised by the **live** drain against the stress bar, never by the
+latched `Stressed` flag — including the first action of an episode: the latch is deliberately slow to clear so the
 alarm does not flicker, and that is the wrong thing to let authorise a new action every second.
 The event log distinguishes shed / settling / deficit-persists / stopped-on-improvement, and
 every refused candidate is recorded with its tier and the reason — a refusal used to fall

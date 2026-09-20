@@ -1,5 +1,82 @@
 # IO Power Control — changelog
 
+## v0.1.13 — live drain authorises every shed action (2026-09-19)
+
+**Defect found by inspection, reproduced by test, then fixed.** Not found in game - the v0.1.12
+armed re-run passed cleanly. It surfaced while tracing why a shed episode ended one second
+after a five-second settle notice (that turned out to be correct: the episode-end check
+precedes the settle check, and reserve had genuinely recovered to 12.0 MW).
+
+### The defect
+
+The live-drain re-qualification was gated on `_shedActions > 0`, so it was skipped for the
+**first** action of an episode, which was authorised by the latched `Stressed` flag instead.
+Episode end resets `_shedActions` to 0, and `Stressed` stays latched for
+`StressRecoverSeconds` (15 s) after the drain stops. Reserve between 0 and `ShedReserveMW`
+needs **no battery drain at all** to occur. So:
+
+    episode ends (reserve >= 4)        ->  _shedActions = 0
+    reserve dips below 4 again, ZERO drain
+    Stressed still latched from the previous episode
+    settle interval expired
+    ->  a shed authorised by a stale alarm and nothing else
+
+Reachable on the test base: reserve settled at **5.06 MW** after the v0.1.12 run, 1.06 MW from
+the threshold, with the steam turbine free to ramp.
+
+**This is the same defect shape found twice before in game** - something deliberately slow to
+clear being allowed to authorise an action that should require live evidence. The episode reset
+re-opened it through a different door.
+
+### The fix
+
+The rule is now stateless: **every shed action requires live drain at or above the stress bar.**
+No per-episode reasoning, no exceptions.
+
+Safe for genuine entries: `material` (drain >= bar) is part of the stress entry test and must
+hold *continuously* through the 10 s window, and `ShedStep` runs in the same tick as `Stress()`,
+so on the tick stress first qualifies the drain is at or above the bar by construction. The
+only behaviour removed is shedding on a stale latch.
+
+Settle timing and episode-end semantics are deliberately untouched.
+
+### First behavioural test in this repository
+
+`IO_Power_Control/tests/test_shed_authorization.py` wraps the script in the same
+`MyGridProgram` shape `check_pb.py` uses, appends a driver **inside** the class so it can reach
+private state, compiles to an exe and runs it. Six assertions:
+
+    NEGATIVE_stale_latch_no_live_drain        the defect
+    POSITIVE_first_action_with_live_drain     must survive the fix
+    NEGATIVE_continuation_drain_below_bar     already correct in v0.1.12, pinned
+    NEGATIVE_inside_settle_interval           settle timing unchanged
+    NEGATIVE_reserve_recovered_ends_episode   episode-end unchanged
+    NEGATIVE_not_stressed                     oldest actuator rule
+
+Proven in the required order: **against v0.1.12 the stale-latch assertion fails with `shed=1`**,
+against v0.1.13 all six pass, and v0.1.12 is retained as a negative control that must keep
+failing. A test that has never been seen to fail is not evidence of anything.
+
+`tools/se_stubs.cs` gained non-null defaults for `Me`, `GridTerminalSystem` and `Runtime` so a
+`Program` can be constructed and run at all - until now the stubs only had to compile a script,
+and the constructor reads `Me.CustomData` and writes `Runtime.UpdateFrequency`. IOPM v2.4.41
+re-checks clean.
+
+### v0.1.12 armed re-run: PASS
+
+Two fresh empty jump drives, `MaxShedPerCycle=1`, `ShedSettleSeconds=5`.
+
+    20:59:56  ELECTRICAL STRESS - batteries draining 12.0 MW for 10.5s
+    20:59:56  shed Jump Drive 10 [Jump] -24.6 MW
+    20:59:56    settling 5.00s before re-measuring
+    20:59:57  Shed episode ended after 1 action(s), reserve 12.0 MW
+    21:00:12  Electrical stress cleared - drain under 0.59 MW for 15.2s
+
+**One block, 24.6 MW, against five blocks and 47.5 MW under v0.1.11.** The jump drive was
+selected *first* this time, no production was touched, and `== CANDIDATES REFUSED ==` was empty
+- so the v0.1.11 ordering anomaly did not reproduce and remains unexplained. The
+instrumentation stays in place to catch it if it recurs.
+
 ## v0.1.12 — the actuator ran open loop (2026-09-19)
 
 **First armed UAT, `MaxShedPerCycle=1`.** A 12 MW deficit from two charging jump drives cost
