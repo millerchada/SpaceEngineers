@@ -1,5 +1,36 @@
 # IO Power Control — changelog
 
+## v0.1.15 — two presentation fixes folded into the LCD change (2026-09-19)
+
+**Presentation only. No control policy.** The whole delta against v0.1.14 is two added lines;
+nothing was removed or altered.
+
+**1. `atLastAction` is now scoped to the episode.** It was not, while `actionsThisEpisode` was,
+so an idle scan read `actionsThisEpisode=0 ... atLastAction=12.0MW` - a figure from a previous
+episode sitting beside a count saying no actions had been taken. Two fields on one line with
+different lifetimes is how a reader ends up mistrusting both.
+
+`_battOutAtShed` is display-only: it appears in the telemetry line and in the "Deficit persists"
+message, which only fires once `_shedActions > 0` and therefore after it has been set again.
+
+**The settle timer is deliberately NOT reset with it.** `_shedSettleUntil` survives the episode
+boundary on purpose, so a fresh deficit seconds after an episode ends is still paced by the
+last action rather than acting immediately. Resetting it here would be a control-policy change
+wearing a presentation fix as a disguise.
+
+**2. A disabled block now reports `CurIn=0, HasCur=true`.** `RefreshDetailChunk` left `CurIn`
+untouched when `ParseDetail` returned nothing, so a switched-off block kept reporting its
+last-known draw indefinitely. Live: `2x JumpDrive cur=60.5MW` with one script-shed, inflating
+`loadEst` to 87.5 MW against a real demand of 47.0 MW.
+
+A switched-off block draws nothing - that is a fact, not a stale estimate, so it is now recorded
+as a measurement rather than left as the last thing we happened to see. **`MaxIn` is untouched**:
+potential demand must still count what a disabled block could draw if switched back on, which is
+the entire point of that figure.
+
+No decision reads either value: `Relief()` returns 0 for a disabled block before it consults
+`CurIn`, and `Potential` uses `MaxIn`. Shed-authorisation suite passes unchanged, 6/6.
+
 ## v0.1.14 — one metric per line in the compact status (2026-09-19)
 
 **Formatting only. No control logic, no thresholds, no semantics.** Verified by diffing the

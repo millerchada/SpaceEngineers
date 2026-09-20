@@ -221,6 +221,35 @@ block to *fit* - `margin = reserve - ShedReserveMW`. At 53.5 MW demand the reser
 it will correctly report `Restore held` until the factory idles and reserve climbs past roughly
 28.6 MW. That is the per-block fit check working, not a stall.
 
+## B6 — PERSISTENCE ACROSS A RECOMPILE, USING THE v0.1.15 UPGRADE ITSELF
+
+The upgrade is the test. `Jump Drive 13` is currently script-shed and must stay that way across
+the recompile: its claimed relief is 28.5 MW and restoration requires the block to *fit*
+(`margin = reserve - ShedReserveMW`), so with reserve around 13 MW it cannot come back yet.
+That makes this a real persistence test rather than a contrived one - the correct outcome is
+"nothing happens", which is the hardest kind to verify without evidence.
+
+Paste `IO_Power_Control_v0.1.15.min.cs`, recompile, then `scan`.
+
+| # | Expected | Where to look |
+|---|---|---|
+| 1 | Shed ownership restored from Storage | startup event `Recovered 1 shed entries from Storage`, NOT `No shed state in Storage` |
+| 2 | `Jump Drive 13` still disabled and listed | `== SHED STATE ==` shows it with `relief=28.5MW` |
+| 3 | Not accidentally restored | no `RESTORED` event; `Restore held: Jump Drive 13 needs 28.5 MW, margin ...` is the correct outcome |
+| 4 | Its draw reports 0, not the stale pre-shed figure | `1x .../LargeJumpDrive ... cur=` should drop by ~28.5 MW versus v0.1.13, and `loadEst` should fall toward real demand |
+| 5 | `atLastAction` scoped for an idle episode | `ShedPhase=idle actionsThisEpisode=0 ... atLastAction=0.00MW` |
+| 6 | No other block changes state | compare the enabled set before and after |
+
+**Note on check 1.** The startup line distinguishes the two cases explicitly, and this is the
+first time that branch will have been exercised with a non-empty list - every prior recompile
+in this project reported `No shed state in Storage`. If it reports that again while
+`Jump Drive 13` is still off, persistence is **not** working and the block has been orphaned:
+the script would no longer know it owns it, and would never restore it. That is a FAIL and
+should stop Phase B.
+
+**Note on check 4.** The other jump drive is still charging, so the rollup will not read zero -
+it should read roughly one drive's draw instead of two.
+
 ## Results
 
 | Step | Pass/Fail | Notes |
