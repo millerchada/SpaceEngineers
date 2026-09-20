@@ -1,5 +1,80 @@
 # IO Power Control — changelog
 
+## v0.1.16 — candidate audit (2026-09-19)
+
+**Diagnostic only.** No change to shed policy, eligibility, tiering, sorting, `Relief()`,
+`ShedOne()` or actuator cadence. No jump-drive special case. This build exists to answer one
+question with evidence instead of argument.
+
+### The question
+
+An actively charging jump drive - category `Jump`, tier `Discretionary` (5) - was selected
+**third**, behind two `Production` blocks (tier `Industrial`, 4), on two separate runs. The
+comparator is correct and would place Jump first if both were present, so the anomaly happens
+**before the sort**.
+
+The existing refusal telemetry could not see it, and by returning empty it did its job: it
+**disproved** the earlier hypothesis that `ShedOne` rejected the jump drive on a fresh
+near-zero read. `_refusals` is populated inside the post-sort loop over `_cand`, so a block
+dropped during candidate construction cannot appear there - no code path would record it.
+
+Of the filters in the build loop, six are structural or static for a given block and would have
+excluded the jump drive equally in the runs where it *was* picked first. **Only
+`Relief(r) <= 0.01` has an outcome that varies between runs** - and `Relief` reads the **cached**
+`CurIn`/`HasCur`, refreshed a chunk at a time, while `ShedOne` reads a live value.
+
+### What the audit records
+
+`== CANDIDATE AUDIT (last shed action) ==`, bounded to 40 entries, last action only:
+
+    name | category | resolved tier | enabled | hasCur | cached curIn | maxIn | relief | verdict
+
+Verdicts cover every outcome reachable once the structural filters pass, so no silent path is
+left: `excluded: tier below depth`, `excluded: not controllable`, `EXCLUDED: relief<=0.01`,
+`included: sorted #N`.
+
+For a block excluded on relief, the audit additionally takes a **fresh** read and labels it as
+such, because the cached string from the earlier parse was never retained:
+
+    fresh parse: ok cur=30.60 max=32.00   <-- CACHE WAS STALE
+    fresh detail: Type: Jump Drive~Max Required Input: 32.00 MW~...
+
+Those two possible readings need different fixes, which is why they are distinguished rather
+than merged:
+
+* **fresh disagrees with cache** - the chunked refresh was stale when the decision was made
+* **fresh also reads zero** - the block genuinely publishes no current-input figure, and the
+  refresh is innocent
+
+**The fresh read is never written back.** A reading taken during an audit must not become the
+state a later decision is made on, or the instrument changes what it is measuring. That is
+asserted by a test, not merely intended.
+
+### The instrument is itself tested
+
+`tests/test_shed_authorization.py` grows from 6 assertions to 12. The new ones construct the
+hypothesised case deliberately - a `Jump` block whose `DetailedInfo` carries a max-input line
+and **no** current-input line, beside a drawing `Production` block - and require the audit to
+name it:
+
+    AUDIT_records_every_considered_block
+    AUDIT_jump_excluded_on_cached_relief                verdict=EXCLUDED: relief<=0.01
+    AUDIT_jump_tier_outranks_production                 Discretionary vs Industrial
+    AUDIT_fresh_read_distinguishes_stale_from_genuine_zero
+    AUDIT_lower_tier_block_was_the_one_shed             production sorted #1
+    AUDIT_does_not_write_back_to_block_state
+
+An instrument that has never been seen to report the thing it was built for is not evidence.
+
+**This proves the mechanism is possible and that the audit will expose it. It does not prove
+this is what happened live** - that needs the next overload.
+
+### What the next live run settles
+
+Either the jump drive appears as `EXCLUDED: relief<=0.01`, and the fresh lines say whether the
+cache was stale or the block really reads zero - or it appears as `included: sorted #N` with an
+unexpected position, and the cause is somewhere else entirely.
+
 ## v0.1.15 — two presentation fixes folded into the LCD change (2026-09-19)
 
 **Presentation only. No control policy.** The whole delta against v0.1.14 is two added lines;

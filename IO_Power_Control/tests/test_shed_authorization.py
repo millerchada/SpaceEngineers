@@ -13,6 +13,13 @@ three separate times in game: something that is deliberately slow to clear being
 authorise an action that should require live evidence. Each time it was found by a person
 watching a live base, which is an expensive way to find it.
 
+IT ALSO PINS THE CANDIDATE AUDIT. The audit exists to settle a live ordering anomaly - a
+tier-Discretionary jump drive selected behind tier-Industrial production blocks, with an empty
+refusal list. An instrument that has never been seen to report the thing it was built for is
+not evidence, so the ordering assertions construct that exact case (a Jump block publishing a
+max-input line and no current-input line, beside a drawing Production block) and require the
+audit to name it.
+
 THE CASE THIS PINS DOWN. After a shed episode ends, _shedActions resets to 0, and the live
 drain re-authorisation is gated on `_shedActions > 0` - so it is skipped for the first action
 of the NEXT episode, which is authorised by Stressed instead. Stressed stays latched for
@@ -73,6 +80,32 @@ void TScenario(double reserve, bool stressed, int actions, double settleUntil,
   _cond = cond; _shedPhase = actions > 0 ? SP_ARMED : SP_IDLE;
 }
 
+// Two blocks: a Jump (tier Discretionary, 5) publishing ONLY a max-input line, and a
+// Production block (tier Industrial, 4) that is actually drawing. ParseDetail on the jump
+// string yields cur=0 max=32, which is exactly the cached state the hypothesis needs.
+void TOrdering() {
+  _shed.Clear(); _shedOrder.Clear(); _events.Clear();
+  _cons.Clear();
+  _cons.Add(new CON { Key = 1, Name = "Test", Home = true });
+  _bi.Clear();
+  var jump = new TestBlock(10, "Jump Drive 15", "Type: Jump Drive\nMax Required Input: 32.00 MW");
+  _bi.Add(new BI { B = jump, F = jump, Id = 10, GridId = 1, Con = 0, Cat = C_JUMP,
+                   Def = "MyObjectBuilder_JumpDrive/LargeJumpDrive", Sub = "LargeJumpDrive",
+                   MaxIn = 32.0, CurIn = 0.0, HasCur = true, Src = SRC_DETAIL });
+  var prod = new TestBlock(11, "Advanced Assembler 2", "Required Input: 4.00 MW");
+  _bi.Add(new BI { B = prod, F = prod, Id = 11, GridId = 1, Con = 0, Cat = C_PROD,
+                   Def = "MyObjectBuilder_Assembler/AdvancedAssembler", Sub = "AdvancedAssembler",
+                   MaxIn = 4.0, CurIn = 4.0, HasCur = true, Src = SRC_DETAIL });
+  _reserve = 2.0; _stressed = true; _shedActions = 0; _shedSettleUntil = 0.0; _now = 100.0;
+  _battNetOut = 12.0; _battBar = 1.17; _battMaxStored = 3.0; _battStored = 2.0;
+  _cond = K_CRITICAL; _shedPhase = SP_IDLE;
+}
+
+CAUD TFind(string name) {
+  for (int i = 0; i < _audit.Count; i++) if (_audit[i].Name == name) return _audit[i];
+  return null;
+}
+
 public int RunTests() {
   Console.WriteLine("shed authorisation regression - " + VERSION);
 
@@ -117,6 +150,35 @@ public int RunTests() {
   ShedStep();
   TAssert("NEGATIVE_not_stressed", _shed.Count == 0,
     "shed=" + _shed.Count + " (expected 0; RequireStressToShed)");
+
+  // ---- CANDIDATE AUDIT. Proves the instrument surfaces the hypothesised ordering case
+  // before it is relied on in game. It does NOT prove this is what happened live - only that
+  // if it did, the audit will say so in as many words.
+  TOrdering();
+  ShedStep();
+  var aj = TFind("Jump Drive 15");
+  var ap = TFind("Advanced Assembler 2");
+  TAssert("AUDIT_records_every_considered_block", aj != null && ap != null,
+    "audit entries=" + _audit.Count);
+  TAssert("AUDIT_jump_excluded_on_cached_relief",
+    aj != null && aj.V == CV_RELIEF,
+    aj == null ? "missing" : "verdict=" + CVN[aj.V] + " cachedRelief=" + Fx(aj.Rel));
+  TAssert("AUDIT_jump_tier_outranks_production",
+    aj != null && ap != null && aj.Tier > ap.Tier,
+    (aj == null || ap == null) ? "missing" : "jump tier=" + TIERN[aj.Tier] +
+      " production tier=" + TIERN[ap.Tier]);
+  TAssert("AUDIT_fresh_read_distinguishes_stale_from_genuine_zero",
+    aj != null && aj.FreshOk && aj.FreshCur <= 0.01 && aj.FreshMax > 30,
+    aj == null ? "missing" : "freshOk=" + aj.FreshOk + " freshCur=" + Fx(aj.FreshCur) +
+      " freshMax=" + Fx(aj.FreshMax));
+  TAssert("AUDIT_lower_tier_block_was_the_one_shed",
+    _shed.Count == 1 && ap != null && ap.V == CV_INCLUDED && ap.Pos == 1,
+    "shed=" + _shed.Count + (ap == null ? "" : " prodVerdict=" + CVN[ap.V] + " pos=" + ap.Pos));
+  // The audit must not become the state a later decision reads. A fresh read during the audit
+  // that wrote back would change what the next candidate build sees.
+  TAssert("AUDIT_does_not_write_back_to_block_state",
+    _bi[0].CurIn == 0.0 && _bi[0].HasCur,
+    "curIn=" + Fx(_bi[0].CurIn) + " hasCur=" + _bi[0].HasCur);
 
   Console.WriteLine(_tRun + " run, " + _tFail + " failed");
   return _tFail;
