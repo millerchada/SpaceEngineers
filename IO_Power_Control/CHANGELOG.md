@@ -1,5 +1,77 @@
 # IO Power Control — changelog
 
+## v0.1.18 — the staged diagnostic report (2026-09-19)
+
+**v0.1.17 survived startup on the production grid and then died the moment `scan` was run.**
+
+The v0.1.17 changelog said a diagnostic command must not be able to terminate the thing it is
+diagnosing, and claimed that removing the forced rediscovery from `WriteScan` achieved that.
+The removal was real. It was not sufficient, and the claim was made without doing the
+arithmetic on what remained.
+
+### What was actually left in `WriteScan`
+
+- A detail top-up **deliberately raised to `InstrBudgetPercent = 90`** - an instruction to spend
+  up to **45,000 of the 50,000 hard limit before the report emitted its first character**. And
+  the budget check was the *last* statement in the loop body, so the iteration that crossed the
+  line - a `DetailedInfo` read plus parse - was paid in full on top.
+- An **unbounded `Measure()`** over the whole model, with roughly 5,000 instructions left.
+- **Eight further full walks** of the model with per-block string formatting and five dictionary
+  builds, with **no budget check anywhere**.
+
+On 1928 functional blocks that is a guaranteed termination, not an unlucky one.
+
+### The fix
+
+The report is now built exactly the way discovery is: a resumable state machine across 21
+sections, every loop budget-checked, **published to Custom Data in one piece at the end**. A
+half-written diagnostic is worse than none, because it reads like a finished one.
+
+- **The 90% override is gone.** The top-up runs on the normal budget, spread across the
+  report's own ticks. Raising the ceiling was never the same thing as having enough room.
+- **The report no longer calls `Measure()`.** It prints the last snapshot and **discloses its
+  age**. A test pins this: a distinctive cached demand figure must survive into the text.
+- **The report holds the model it started with.** A rescan completing underneath it swaps the
+  live lists; the report keeps its own coherent snapshot - the same invariant discovery relies
+  on, for the same reason.
+- **`RefreshDetailChunk` checks the budget first**, not last, so the crossing block is not paid
+  on top of the limit.
+- **A report that cannot make progress abandons after 900 ticks and writes nothing.** A leaked
+  half-built report is a slow way to lose the diagnostic entirely.
+- A second `scan` while one is running is refused and says so.
+- `scan` before a model exists is refused and says so.
+
+### `peak 0` - the instrumentation was blind to the ticks under suspicion
+
+The production screenshot showed `instr 30075/50000` and `peak 0` on the same screen.
+`_tickPeak` was written only at the end of a **complete** tick, and the boot and discovery paths
+return before reaching it. The one number the operator was asked to read back could not see
+startup at all.
+
+It is now recorded in a `finally` on **every** path - boot, discovery, command, exception -
+and carries **what the script was doing** at its most expensive run:
+
+    constructor 0   last run 8134   PEAK RUN 30160  during: discover blocks
+
+`ctor 0` from the same screenshot is reported as observed. It does not establish that the
+constructor is free; the honest reading is that `CurrentInstructionCount` does not accumulate
+there or is reset before `Main`. The evidence the constructor change worked is that the script
+now reaches `DISCOVERING` at all.
+
+### Testing
+
+`tests/test_staged_report.py`, **19 assertions** over 2000 blocks under simulated instruction
+pressure: refused before publication, queues without running, refuses a second scan, takes
+multiple ticks, **never exceeds the hard limit on any tick**, never writes Custom Data early,
+completes, publishes atomically, contains every one of 16 sections, prints the cached snapshot
+rather than taking a new one, covers the model with detail, omits the per-block table unless
+`scan all` is given, holds its snapshot across a rescan, abandons at the tick cap without
+writing, stops the detail chunk inside the hard limit, and records peak cost on the command
+path.
+
+**Why this was missed in v0.1.17:** 31 assertions passed and none of them ran `WriteScan`. The
+gap was in what was chosen to assert, not in the harness.
+
 ## v0.1.17 — staged startup and discovery (2026-09-19)
 
 **Architectural. Caused by the first production deployment**, which terminated on its first
