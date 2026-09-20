@@ -159,6 +159,68 @@ drawing 32 MW, that is a **new defect in the fresh-read guard** and should be re
 any further shedding work - it would mean the guard is misreading a block class rather than
 protecting against idle machines.
 
+## B2r RESULT (v0.1.12) and v0.1.13 LIVE REGRESSION — PASS, ACCEPTED
+
+`AutoShed=true`, `MaxShedPerCycle=1`, `ShedSettleSeconds=5`, two fresh empty jump drives.
+
+    20:59:56  ELECTRICAL STRESS - batteries draining 12.0 MW for 10.5s
+    20:59:56  shed Jump Drive 10 [Jump] -24.6 MW
+    20:59:56    settling 5.00s before re-measuring
+    20:59:57  Shed episode ended after 1 action(s), reserve 12.0 MW
+    21:00:12  Electrical stress cleared - drain under 0.59 MW for 15.2s
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Actions paced, not per-tick | **PASS** - only one action occurred |
+| 2 | Far fewer blocks than five | **PASS** - one block, 24.6 MW vs five blocks, 47.5 MW |
+| 3 | Ordering question | **NOT REPRODUCED** - jump drive selected first, refusals empty |
+| 4 | Post-settle decision explicit | **PASS** - settle notice then episode end |
+| 5 | No second action while `Stressed` latched | **PASS** - drain 12 -> 0, nothing further shed |
+| 6 | No production shed | **PASS** |
+| 7 | Refused candidates | **PASS** - none |
+
+**v0.1.13 live regression: PASS.** Same behaviour with the stateless live-drain rule in place.
+
+**The actuator authorisation defect is accepted as fixed.**
+
+### Still unexplained
+
+The v0.1.11 five-block ordering anomaly did **not** reproduce. Jump Drive 10 was selected first,
+exactly as the sort predicts, and `== CANDIDATES REFUSED ==` was empty. So the cause of
+production being chosen ahead of a tier-Discretionary jump drive in that run remains unknown -
+it was not demonstrated to be the `ShedOne` fresh-read guard. The instrumentation stays in
+place. Watch for it during B4, which sheds several blocks.
+
+### Known telemetry scoping wrinkle (cosmetic, not blocking)
+
+`atLastAction` is **not** scoped to the episode, while `actionsThisEpisode` is, so an idle
+scan reads:
+
+    ShedPhase=idle actionsThisEpisode=0 ... drainNow=0.00MW atLastAction=12.0MW
+
+which invites reading "12.0 MW at the last action" as belonging to an episode that reports zero
+actions. `_battOutAtShed` is display-only and safe to scope to the episode. The settle timer
+must **not** be reset alongside it - it deliberately survives the episode boundary so a new
+deficit seconds later is still paced.
+
+The episode-end event could also say that it supersedes a pending settle, which is what made
+the 20:59:56/57 sequence look wrong at first reading.
+
+## Phase B remaining
+
+B2/B3 are covered for the jump-drive case only. Still outstanding, and none of them have run:
+
+* **B0** restore in isolation - `run "recover"`. Jump Drive 10 is still shed.
+* **B3** protection under a shed that actually reaches production tiers.
+* **B4** staged restore with several blocks shed.
+* **B5** only script-shed blocks restored.
+* **B6** persistence across a recompile with loads shed.
+
+Note on B0/B4 timing: Jump Drive 10 claims 24.6 MW of relief, and restoration requires the
+block to *fit* - `margin = reserve - ShedReserveMW`. At 53.5 MW demand the reserve is ~5 MW, so
+it will correctly report `Restore held` until the factory idles and reserve climbs past roughly
+28.6 MW. That is the per-block fit check working, not a stall.
+
 ## Results
 
 | Step | Pass/Fail | Notes |
