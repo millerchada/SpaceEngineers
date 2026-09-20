@@ -1,5 +1,60 @@
 # IO Power Control — changelog
 
+## v0.1.14 — one metric per line in the compact status (2026-09-19)
+
+**Formatting only. No control logic, no thresholds, no semantics.** Verified by diffing the
+source against v0.1.13 with the version string normalised: the only changed lines are inside
+the `Echo` block and its comment.
+
+The compact status packed up to five figures onto a line:
+
+    gen 47.0 MW / cred 59.7 MW / rated 59.7 MW   demand 47.0 MW   reserve 12.6 MW
+
+On a real LCD that either overflows or relies on the surface wrapping it, and **a wrapped
+number reads as a different number** - which is the actual risk, not untidiness. Each metric
+now gets its own line, with blank lines grouping the four things being reported: what the
+script is, the power balance, what it can see, and what it costs to run.
+
+    Power Control v0.1.14
+    STATION/NORMAL
+    cond NORMAL
+
+    gen 47.0 MW
+    cred 59.7 MW
+    rated 59.7 MW
+    demand 47.0 MW
+    reserve 12.6 MW
+
+    blocks 44
+    producers 9
+    batteries 1
+    grids 1
+    model coverage 88.6%
+    unknown 4
+    shed 1
+
+    instr 1816/50000
+    run 0.00ms
+
+`last error` keeps its own group when present. The shed-authorisation regression suite passes
+unchanged (6/6), which is the point of having it: a formatting change should not be able to
+move behaviour, and now that can be demonstrated rather than asserted.
+
+### Still outstanding, unchanged by this build
+
+Two display-only telemetry wrinkles noted during the v0.1.13 live run and deliberately not
+folded into a formatting-only release:
+
+* `atLastAction` is not scoped to the episode, so an idle scan can read
+  `actionsThisEpisode=0 ... atLastAction=12.0MW` where the figure belongs to a previous
+  episode. `_battOutAtShed` is display-only and safe to scope; the settle timer must **not** be
+  reset with it, since it deliberately survives the episode boundary.
+* A **disabled** block keeps its last-known draw: `RefreshDetailChunk` leaves `CurIn` untouched
+  when `ParseDetail` returns nothing, so a shed block still reports its pre-shed figure. Live:
+  `2x JumpDrive cur=60.5MW` with one of them shed, inflating `loadEst` to 87.5 MW against a
+  real demand of 47.0. Decisions are unaffected - `Relief()` returns 0 for a disabled block
+  before it consults `CurIn`, and `Potential` uses `MaxIn`.
+
 ## v0.1.13 — live drain authorises every shed action (2026-09-19)
 
 **Defect found by inspection, reproduced by test, then fixed.** Not found in game - the v0.1.12
