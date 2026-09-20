@@ -250,6 +250,56 @@ should stop Phase B.
 **Note on check 4.** The other jump drive is still charging, so the rollup will not read zero -
 it should read roughly one drive's draw instead of two.
 
+## B6 RESULT (v0.1.15) — PASS
+
+Immediately before the recompile the script owned three shed blocks:
+
+    Advanced Assembler 2
+    Ceramics Furnace
+    Jump Drive 15
+
+After recompiling the same v0.1.15 build, startup reported **`Recovered 3 shed entries from
+Storage`** and `== SHED STATE ==` still contained all three.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | Shed ownership restored from Storage | **PASS** - 3 entries, not `No shed state in Storage` |
+| 2 | Blocks still disabled and listed | **PASS** |
+| 3 | Not accidentally restored | **PASS** - no `RESTORED` on startup |
+| 4 | Disabled block reports 0 draw | **PASS** - `2x JumpDrive cur=32.0MW`, was ~60 MW with one shed |
+| 5 | `atLastAction` scoped | **PASS** - `ShedPhase=idle actionsThisEpisode=0 atLastAction=0.00MW` |
+| 6 | No other block changed state | **PASS** |
+
+This is the first recompile in the project to exercise the non-empty branch of shed-state
+recovery. Both v0.1.15 presentation fixes are confirmed live.
+
+`recover` has **not** been run; those three blocks remain script-owned and shed.
+
+### v0.1.15 cadence — PASS
+
+    21:22:49  shed Advanced Assembler 2 [Production] -4.00 MW
+    21:22:55  shed Ceramics Furnace     [Production] -3.50 MW
+    21:23:01  shed Jump Drive 15        [Jump]      -30.6 MW
+
+One action at a time, 5-6 s apart, `Deficit persists after settle: draining 12.0 MW, was
+12.0 MW at the last action` between each, drain to 0 after the jump drive, episode ended after
+3 actions, stress cleared after the normal 15.2 s hysteresis. Settle pacing and live-drain
+re-authorisation both behaved exactly as designed.
+
+## BLOCKING: candidate ordering anomaly reproduced, root cause NOT yet proven
+
+Jump is Discretionary (tier 5), Production is Industrial (tier 4), so an actively charging jump
+drive should be selected first. It was selected **third**, and
+`== CANDIDATES REFUSED ==` was **empty**.
+
+The v0.1.9 hypothesis - that `ShedOne` refused it on a fresh near-zero read - is **disproved**
+by that empty list. See the review recorded in CHANGELOG under v0.1.16 for where the ordering
+is actually lost. In short: `Relief(r) <= 0.01` excludes a block **before** `_cand.Add`, so an
+excluded block never reaches `ShedOne` and no refusal can exist for it. The refusal telemetry
+is downstream of the exclusion and structurally cannot observe this.
+
+**No behavioural change until the candidate audit proves the mechanism.**
+
 ## Results
 
 | Step | Pass/Fail | Notes |
