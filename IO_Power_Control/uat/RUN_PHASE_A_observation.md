@@ -235,6 +235,61 @@ The Ore Purifier is still in `SHED STATE` from the v0.1.5 false shed. It has now
 purpose as persistence evidence across four recompiles and should be cleared with
 `run "recover"` before any armed test, so the shed list starts empty.
 
+## v0.1.11 DETECTOR RE-VERIFICATION — PASS (2026-09-19, AutoShed=false)
+
+Two jump drives installed, giving a far deeper deficit than any previous run.
+
+**Entry.** Demand 71.0 MW against GenCredible 59.0 MW, `BattNetOut` 12.0 MW, Reserve -12.0 MW.
+
+    20:19:40  ELECTRICAL STRESS - batteries draining 12.0 MW for 10.5s,
+              stored down 0.04 of 0.04 MWh expected
+    DeclineExpected=0.04 MWh   required=0.02 MWh   actual exceeded required
+
+Every figure reconciles against the new semantics: 12.0 MW x 10.5 s = 0.0350 MWh expected
+(displays as 0.04), required 0.5 x that = 0.0175 (displays as 0.02), and the bar was
+max(0.5, 0.02 x 59.0) = 1.18 MW with a recovery bar of 0.59 MW - exactly as reported.
+
+**The gating term has moved, which is the point of the change.** At 12 MW the *hold* was the
+binding constraint at 10.5 s, not the decline - the first run in which that is true. Under the
+old capacity-share rule the decline was always the bottleneck. The leg now confirms the drain
+rather than rate-limiting the detector.
+
+**Latch.** Held continuously through the sustained 12 MW deficit. No false clear/reassert.
+
+**Recovery.** One jump drive removed, one left installed. Discharge fell immediately to zero
+while stress stayed latched for the full confirmation:
+
+    20:20:58  Electrical stress cleared - drain under 0.59 MW for 15.2s
+    20:20:58  Capacity risk CRITICAL -> WARNING
+    20:20:58  Power condition WARNING -> NORMAL
+
+Final: `Stressed=False`, `BattNetOut=0.00`, `Condition=NORMAL`, `CapacityRisk=WARNING`,
+brownout `confirmed=0 raw=0`. Condition/CapacityRisk separation correct again - the remaining
+jump drive leaves real headroom thin, which is a risk, not a condition.
+
+---
+
+# PHASE A DETECTOR: ACCEPTED
+
+**Tagged `IO_Power_Control-v0.1.11` as the accepted detector baseline.**
+
+Proven across three independent overload runs and extended cyclic operation:
+
+| | |
+|---|---|
+| False-positive resistance | cyclic factory, ~4.54 MW transients, heavy production at zero reserve |
+| Positive detection | 32 MW step (10.5 s), 32 MW repeat, 12 MW sustained deficit (10.5 s) |
+| Latch | held through 90 s at 4.2-7.7 MW, and through a sustained 12 MW deficit |
+| Recovery | cleared 15 s after the deficit ended, never before |
+| Scale independence | decline leg no longer the gating term at a large deficit |
+| Brownout | never a confirmed false positive, including across a block deletion |
+
+No known defects in the detection path.
+
+## Next: Phase B, the actuator
+
+See `RUN_PHASE_B_actuator.md`. Nothing in the actuator path has ever executed.
+
 ## Next run (v0.1.11) — re-verify the detector, still AutoShed=false
 
 The v0.1.10 evidence was gathered against the old third leg. The computed timing says the test

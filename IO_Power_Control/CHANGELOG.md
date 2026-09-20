@@ -61,6 +61,19 @@ instead of eighteen minutes later.
 The rejection case still works by construction: during the gross/net oscillation `actual` stays
 near zero while `expected` climbs, so the ratio is never met.
 
+### Re-verification: PASS, and the gating term moved
+
+Two jump drives, Demand 71.0 MW against GenCredible 59.0 MW, `BattNetOut` 12.0 MW. Entry at
+10.5 s with `stored down 0.04 of 0.04 MWh expected`, required 0.02. Latch held through the
+sustained 12 MW deficit; recovery cleared 15.2 s after the drain stopped.
+
+At 12 MW the **hold** was the binding constraint, not the decline - the first run in which that
+is true. Under the capacity-share rule the decline was always the bottleneck. The leg now
+confirms the drain rather than rate-limiting the detector, which is exactly what it was
+supposed to become.
+
+**Tagged `IO_Power_Control-v0.1.11` as the accepted Phase A detector baseline.**
+
 ### Config
 
 `StoredDeclinePercent` is **removed**, not left inert - a key that silently does nothing is
