@@ -54,6 +54,12 @@ void TA(string name, bool ok, string detail) {
   Console.WriteLine((ok ? "PASS  " : "FAIL  ") + name + "   " + detail);
 }
 
+int TCount(string hay, string needle) {
+  int n = 0, i = 0;
+  while ((i = hay.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { n++; i += needle.Length; }
+  return n;
+}
+
 void TBoot() {
   int guard = 0;
   while (_boot != B_DONE && guard++ < 100000) BootStep();
@@ -235,6 +241,36 @@ public int RunTests() {
   TA("PEAK_recorded_on_the_command_path", _tickPeak > 0 && _peakWhat.Length > 0,
     "peak=" + _tickPeak + " during=" + _peakWhat);
 
+  // ---- SECTION HEADERS, EXACTLY ONCE. The production report printed
+  //   == UNKNOWN CONSUMERS (no rated load found) ==
+  // twice, because the header was written under `if (_rIdx == 0)`. That tests PROGRESS, not
+  // whether the header has been written: a section entered with no budget left returns with
+  // the cursor still at 0 and writes its header again next tick. A starved section could
+  // write it many times.
+  int dupes = 0; string dupMsg = "";
+  for (int i = 0; i < want.Length; i++) {
+    if (want[i].IndexOf("==", StringComparison.Ordinal) != 0) continue;
+    int c = TCount(rpt, want[i]);
+    if (c != 1) { dupes++; if (dupMsg.Length == 0) dupMsg = want[i] + " x" + c; }
+  }
+  TA("REPORT_each_section_header_appears_exactly_once", dupes == 0,
+    "sectionsWithWrongCount=" + dupes + " " + dupMsg);
+
+  // Directly: a section re-entered without making progress must not repeat its header.
+  // The published report nulls its snapshot refs, so re-arm them for the direct call below.
+  _rBi = _bi; _rProd = _prod; _rBats = _bats; _rCons = _cons;
+  TA("SETUP_constructs_present", _rCons != null && _rCons.Count > 0,
+    "constructs=" + (_rCons == null ? -1 : _rCons.Count));
+  _rb.Clear();
+  NextSec(R_CONSTRUCTS);
+  Runtime.Step = 60000;                          // every budget check trips immediately
+  RepConstructs(); RepConstructs(); RepConstructs();
+  TA("REPORT_header_not_repeated_when_a_section_yields_at_cursor_zero",
+    TCount(_rb.ToString(), "== CONSTRUCTS ==") == 1 && _rs == R_CONSTRUCTS,
+    "headers=" + TCount(_rb.ToString(), "== CONSTRUCTS ==") + " state=" + RN[_rs]
+    + " cursor=" + _rIdx);
+  _rb.Clear(); _rs = R_IDLE; Runtime.Step = 40;
+
   // ---- PER-TICK BUDGET. v0.1.18 gave every resumable phase the same soft ceiling, and the
   // production grid reached PEAK RUN 47327 of 50000 on a rescan tick with every individual
   // phase inside its budget: discovery yielded at 30449, then the tail that MUST still run -
@@ -272,6 +308,15 @@ public int RunTests() {
   _phPeak[PH_MEASURE] = 49000;
   TA("BUDGET_never_starves_a_phase_completely", Ceiling() == floorC,
     "ceiling=" + Ceiling() + " floor=" + floorC + " (progress guarantee, tail unaffordable)");
+  _phPeak[PH_MEASURE] = 16400;
+
+  // The REPORT runs last in the tick, so reserving for the tail a second time is wrong.
+  // v0.1.19 did, and the production report took 36 ticks and 41.5 s where v0.1.18 took 5.
+  TA("REPORT_uses_the_soft_budget_not_the_reserved_ceiling",
+    SoftBudget() == max * _c.InstrBudgetPercent / 100 && Ceiling() < SoftBudget(),
+    "soft=" + SoftBudget() + " ceiling=" + Ceiling()
+    + " (phases with a tail yield at the ceiling; the report does not)");
+
   _phPeak[PH_DETAIL] = 0; _phPeak[PH_MEASURE] = 0;
   _phPeak[PH_CONTROL] = 0; _phPeak[PH_RENDER] = 0;
 

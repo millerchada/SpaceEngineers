@@ -1,5 +1,60 @@
 # IO Power Control — changelog
 
+## v0.1.20 — report staging defects found by the v0.1.19 production report (2026-09-19)
+
+v0.1.19's budgeting is **accepted**: `PEAK RUN 39662 during: discover blocks` against a
+predicted `ceiling 22021 + tail 17979 = 40000`, on 1,862 functional blocks. Down from 47,327,
+with 10,338 instructions of headroom. Nothing here changes that; these are two defects in the
+report staging itself, both visible in that report.
+
+### A section header could be written more than once
+
+The production report contains:
+
+    == UNKNOWN CONSUMERS (no rated load found) ==
+
+    == UNKNOWN CONSUMERS (no rated load found) ==
+
+Every section wrote its header under `if (_rIdx == 0)`. That tests **progress**, not whether
+the header has been written. A section entered with no budget left returns with the cursor
+still at zero and writes its header again on the next tick - and the tighter the budget, the
+more times it can happen.
+
+Replaced with an explicit `Hdr()` flag, cleared by `NextSec`. Cosmetic in effect, but it was a
+correctness bug in a diagnostic, and a diagnostic that misreports its own structure is exactly
+the thing that cannot be allowed to drift.
+
+### The report was throttled against work that had already run
+
+    report        last 8   peak 4862
+    report built over 36 tick(s) in 41.5s
+
+The same report took **5 ticks** under v0.1.18. The report runs **last** in the tick, so
+nothing follows it and reserving for the tail a second time is wrong. v0.1.19 applied the
+reduced ceiling uniformly - safe, but needlessly slow, and it is why Custom Data appeared stale
+for the better part of a minute after `scan`.
+
+Phases that have a tail keep `Over()` and the reserved `Ceiling()`. The report uses
+`OverReport()` and the plain soft budget. `RefreshDetailChunk` now takes its budget as an
+argument rather than deciding for itself.
+
+### Presentation
+
+    CapacityRisk=WARNING Candidate=WARNING CandidateHeld=117.8/0.00s
+
+The denominator is zero because the candidate equals the current risk - there is no threshold
+to hold against. Reads as a broken timer. Now prints `stable for 117.8s`. **Behaviour
+unchanged**; the debounce is untouched.
+
+### Testing
+
+`tests/test_staged_report.py` grows to **28 assertions**:
+
+- every section header appears **exactly once** in a published report;
+- a section re-entered **without making progress** does not repeat its header - the defect
+  reproduced directly, by calling a section three times with the budget already exhausted;
+- the report budget is the soft budget, not the reserved ceiling.
+
 ## v0.1.19 — the budget is per tick, not per phase (2026-09-19)
 
 **Found by v0.1.18's own cost table on the production grid**, which is the first time this
