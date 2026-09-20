@@ -235,6 +235,46 @@ public int RunTests() {
   TA("PEAK_recorded_on_the_command_path", _tickPeak > 0 && _peakWhat.Length > 0,
     "peak=" + _tickPeak + " during=" + _peakWhat);
 
+  // ---- PER-TICK BUDGET. v0.1.18 gave every resumable phase the same soft ceiling, and the
+  // production grid reached PEAK RUN 47327 of 50000 on a rescan tick with every individual
+  // phase inside its budget: discovery yielded at 30449, then the tail that MUST still run -
+  // detail top-up, Measure, Condition, Render - spent another 16878. Nothing was over its own
+  // budget. Nothing asked what had to run after it.
+  int max = Runtime.MaxInstructionCount;
+  int margin = max / 5;
+  int floorC = max / 25;
+  int soft = max * _c.InstrBudgetPercent / 100;
+
+  _modelReady = false;
+  _phPeak[PH_DETAIL] = 900; _phPeak[PH_MEASURE] = 16400;
+  _phPeak[PH_CONTROL] = 20; _phPeak[PH_RENDER] = 700;
+  TA("BUDGET_first_start_gets_the_full_soft_budget", TailCost() == 0 && Ceiling() == soft,
+    "tail=" + TailCost() + " ceiling=" + Ceiling() + " soft=" + soft);
+
+  _modelReady = true;
+  int tail = TailCost();
+  int ceil = Ceiling();
+  TA("BUDGET_reserves_the_measured_tail", tail == 18020 && ceil < soft,
+    "tail=" + tail + " ceiling=" + ceil + " soft=" + soft);
+  // The assertion that encodes the defect: a phase yielding at the ceiling, plus everything
+  // that must follow it, has to fit inside the HARD limit with room to spare.
+  TA("BUDGET_a_full_tick_fits_under_the_hard_limit", ceil + tail + margin <= max,
+    "ceiling=" + ceil + " + tail=" + tail + " + margin=" + margin + " = "
+    + (ceil + tail + margin) + " vs hard limit " + max);
+  TA("BUDGET_reproduces_the_v0118_overrun_without_the_reservation",
+    soft + tail > max - 2000,
+    "the OLD ceiling " + soft + " plus the same tail " + tail + " = " + (soft + tail)
+    + ", which is what reached 47327 in production");
+
+  // A tail so expensive that nothing is affordable must still let a phase make progress, or a
+  // rescan never completes and the model goes stale forever - a quiet failure that looks
+  // exactly like a working script.
+  _phPeak[PH_MEASURE] = 49000;
+  TA("BUDGET_never_starves_a_phase_completely", Ceiling() == floorC,
+    "ceiling=" + Ceiling() + " floor=" + floorC + " (progress guarantee, tail unaffordable)");
+  _phPeak[PH_DETAIL] = 0; _phPeak[PH_MEASURE] = 0;
+  _phPeak[PH_CONTROL] = 0; _phPeak[PH_RENDER] = 0;
+
   Console.WriteLine(_tRun + " run, " + _tFail + " failed");
   return _tFail;
 }

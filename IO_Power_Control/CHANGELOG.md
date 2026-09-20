@@ -1,5 +1,79 @@
 # IO Power Control — changelog
 
+## v0.1.19 — the budget is per tick, not per phase (2026-09-19)
+
+**Found by v0.1.18's own cost table on the production grid**, which is the first time this
+script has been able to report a number instead of dying.
+
+    phase            last   peak   work
+    discover          1477  30449      0
+    measure          16300  16421   1859
+    ...
+    constructor 0   last run 3   PEAK RUN 47327  during: discover blocks
+
+**Nothing exceeded its own budget.** Discovery yielded correctly at 30,449 against a 30,000
+soft budget. The tick still reached **94.7% of the hard limit**, and the live dashboard caught
+it at `instr 46962/50000`.
+
+### Why
+
+On a **rescan** the model is already published, so the tick does not return after discovery -
+protection cannot pause for twelve seconds while a rescan finishes. Discovery yields at 30k,
+and then `RefreshDetailChunk` + `Measure` + `Condition` + `Render` spend another **16,878**.
+
+    30,449 + 16,878 = 47,327
+
+Every phase asked *am I over 60%?* None asked *what still has to run after me?* On a first
+start the tick returns immediately after discovery, so there is no tail - which is exactly why
+v0.1.18 booted cleanly and still sat ~2,700 instructions from termination every thirty seconds.
+
+### The fix
+
+A resumable phase now yields early enough to **pay for the work that must follow it**, using
+the **measured peaks** of those phases rather than a guess:
+
+    ceiling = min(soft budget, hard limit - reserved tail - 20% margin)
+    reserved tail = peak(detail) + peak(measure) + peak(control) + peak(render)
+
+On your grid that is `min(30000, 50000 - 18020 - 10000)` = **21,980**, leaving 10,000
+instructions of headroom on a worst-case rescan tick. On a first start `TailCost()` is zero and
+the full soft budget is available, unchanged.
+
+The per-phase instrumentation added in v0.1.17 is what makes this possible: the script now
+budgets from what it has actually been **observed** to cost, not from a number written down
+once. A floor of 4% guarantees a phase always makes some progress - otherwise an expensive tail
+could stall a rescan forever, and a permanently stale model is a quiet failure that looks
+exactly like a working script.
+
+### Measure is now the binding constraint - stated, not hidden
+
+`Measure()` is deliberately not chunked, because a snapshot assembled from two ticks is not a
+snapshot. v0.1.17 asserted this was affordable and instrumented it so the claim could be
+checked instead of assumed. It has now been checked: **16,421 instructions for 1,859 blocks**,
+one third of the hard limit, linear in block count.
+
+That makes it the largest fixed per-tick cost and the thing that bounds the grid size this
+script can protect. The cost section now says so on every report rather than leaving it to be
+rediscovered.
+
+### `last FULL tick`
+
+`last run 3` was technically true and useless: at `Update10` with `UpdateSeconds=1` most
+invocations return immediately and cost about three instructions. The last **complete** tick is
+now reported alongside it.
+
+### Testing
+
+`tests/test_staged_report.py` grows to **24 assertions** with the budget arithmetic: full soft
+budget on a first start, the measured tail reserved, **a full tick fitting under the hard limit
+with margin**, the progress floor when the tail is unaffordable - and one assertion that
+reproduces the v0.1.18 overrun from the same numbers, so the regression cannot come back
+silently.
+
+**What the harness cannot do:** it does not reproduce Space Engineers' instruction counter, so
+it cannot simulate a 16,000-instruction `Measure`. It tests the reservation arithmetic
+directly. The proof is the in-game `PEAK RUN`.
+
 ## v0.1.18 — the staged diagnostic report (2026-09-19)
 
 **v0.1.17 survived startup on the production grid and then died the moment `scan` was run.**
