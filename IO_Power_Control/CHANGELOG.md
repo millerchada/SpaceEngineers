@@ -1,5 +1,83 @@
 # IO Power Control — changelog
 
+## v0.1.12 — the actuator ran open loop (2026-09-19)
+
+**First armed UAT, `MaxShedPerCycle=1`.** A 12 MW deficit from two charging jump drives cost
+**five blocks, 47.5 MW of load**, shed one per second:
+
+    20:39:18  Ore Purifier         -5.00 MW
+    20:39:19  Advanced Assembler 2 -4.00 MW
+    20:39:20  Ceramics Furnace     -3.50 MW
+    20:39:21  Cement Kiln          -3.00 MW
+    20:39:22  Jump Drive 9        -32.00 MW
+
+Detector semantics from v0.1.11 are unchanged and were not involved.
+
+### Why it cascaded
+
+`MaxShedPerCycle` caps a single `DoShed` **call**, and `ShedStep` is called every `Tick` - 1 Hz.
+So the cap was one block per second with nothing in between.
+
+The reserve gate should still have stopped it, and did not, because **reserve never improved.**
+The fast ring shows demand pinned at 71.7 MW and `bout` at 12.0 MW through the entire window.
+A charging jump drive absorbs whatever is freed, so switching off the Ore Purifier released
+5 MW straight into the jump drives. **Four of those five sheds achieved nothing measurable**,
+and the engine could not notice because it never waited to observe its own effect.
+
+### Two changes
+
+**1. `ShedSettleSeconds` (default 5).** Elapsed time after any shed action before another is
+considered - elapsed time, not iteration count, so it is independent of tick rate.
+`MaxShedPerCycle` keeps its existing meaning: how many blocks one action may take.
+
+**2. Continuation re-authorised from the LIVE electrical condition**, not from the latched
+`Stressed` flag. The latch is deliberately slow to clear so the alarm does not flicker; that is
+the wrong thing to let authorise a fresh actuator action every second. After the first action,
+shedding continues only while `battNetOut >= battStressBar` - the same bar entry used.
+
+Stated plainly: **a settle interval alone would still have shed all five blocks, only slower.**
+What limits the damage is re-qualifying the deficit and the refusal instrumentation below. The
+settle interval's real value is making the futility observable.
+
+### The decision is now explicit in the event log
+
+Four distinguishable states, logged on transition only:
+
+    LOAD SHEDDING n item(s) ... / settling Ns before re-measuring        a shed happened
+    (silent)                                                            settling
+    Deficit persists after settle: draining X, was Y at the last action  another shed permitted
+    SHEDDING STOPPED - drain X below bar Y after N action(s)             improved, stopped
+    Shed episode ended after N action(s), reserve X                      deficit cleared
+
+`scan` reports `ShedPhase`, `actionsThisEpisode`, `settleRemaining`, and `drainNow` against
+`atLastAction`. The dashboard carries `Shed Phase`.
+
+### Candidate refusals are no longer invisible
+
+`Jump Drive 9` is tier Discretionary and should have sorted **first** - and does: in an earlier
+single-drive episode at 20:29:13 it was picked first, exactly as designed. In the two-drive
+episode it went last, after four Production blocks.
+
+The only filter that can produce that ordering is `ShedOne` declining it and the loop falling
+through to the next candidate:
+
+    if (!ShedOne(r, rel)) continue;   // n not incremented, nothing recorded
+
+`ShedOne` re-reads `DetailedInfo` and refuses on `fcur <= 0.01` - a guard added in v0.1.4 to
+stop idle machines being shed. **This is instrumented, not assumed.** Every refusal now records
+the block, category, tier, claimed relief and the reason, in the event log and in a
+`== CANDIDATES REFUSED AT THE LAST SHED ACTION ==` section. The next two-empty-jump-drive run
+will show whether a tier-Discretionary candidate really was refused for reading near-zero live
+draw, or whether something else is going on.
+
+A refused candidate being invisible is a defect regardless of whether it caused this one.
+
+### Unchanged
+
+Restoration - the per-block fit check (`Restore held: Jump Drive 9 needs 32.0 MW, margin
+18.1 MW`) behaved correctly and was not touched. Detector, capacity model, `Potential`, catalog,
+CapacityRisk debounce. No steam/H2 model.
+
 ## v0.1.11 — the stored-decline leg is now scale-free (2026-09-19)
 
 **Detector change only.** The material-discharge threshold, the 10 s sustained hold, the

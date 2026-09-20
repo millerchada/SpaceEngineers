@@ -1,6 +1,6 @@
 # IO Power Control
 
-**IOPC v0.1.11** — power capacity, protection and automatic load shedding for Space Engineers,
+**IOPC v0.1.12** — power capacity, protection and automatic load shedding for Space Engineers,
 built against **Industrial Overhaul v1.7.7**.
 
 One script for both stations and ships. It answers four separate questions:
@@ -16,10 +16,10 @@ exceeding generation, and the whole base going down.
 
 ## Deploying
 
-    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.11.cs
-    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.11.cs
+    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.12.cs
+    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.12.cs
 
-Paste `IO_Power_Control_v0.1.11.min.cs` into a programmable block and recompile. The source is
+Paste `IO_Power_Control_v0.1.12.min.cs` into a programmable block and recompile. The source is
 ~81 k characters, which is under the PB's 100 k ceiling, but the artifact is what gets pasted
 — same as every other script in this repo.
 
@@ -513,7 +513,19 @@ sampled `DetailedInfo` sum — network totals are exact, per-grid attribution is
 ## 11. Shedding, hysteresis and recovery
 
 Shedding triggers below `ShedReserveMW` (default 4 MW) and targets getting back above it with
-1 MW of margin, at most `MaxShedPerCycle` items per cycle, re-measuring every cycle.
+1 MW of margin, at most `MaxShedPerCycle` items per **action**.
+
+**Actions are paced by `ShedSettleSeconds` (default 5 s), not by the tick rate.** Without that,
+`ShedStep` runs at 1 Hz and the actuator acts again before its last action could take effect -
+which cost five blocks and 47.5 MW on a 12 MW deficit, because two charging jump drives absorbed
+every megawatt freed and the reserve figure never moved.
+
+After the first action, continuation is re-authorised from the **live** drain against the stress
+bar, never from the latched `Stressed` flag: the latch is deliberately slow to clear so the
+alarm does not flicker, and that is the wrong thing to let authorise a new action every second.
+The event log distinguishes shed / settling / deficit-persists / stopped-on-improvement, and
+every refused candidate is recorded with its tier and the reason — a refusal used to fall
+through to the next candidate silently, which can reorder the entire shed sequence.
 
 Candidates are sorted by tier (most expendable first), then by the relief they would actually
 give back *now*. A machine measured at zero draw gives zero relief and is not shed — switching

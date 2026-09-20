@@ -107,6 +107,58 @@ While blocks are shed, recompile the PB.
 * Docking, Red Alert, ship role: Phase C.
 * No steam/H2 sustainable-capacity model.
 
+## B2 FIRST ARMED RUN (v0.1.11) — FAIL, fixed in v0.1.12
+
+`AutoShed=true`, `MaxShedPerCycle=1`. Two empty jump drives charging at 32 MW each.
+
+A **12 MW deficit cost five blocks, 47.5 MW of load**, shed one per second. Two defects:
+
+1. `MaxShedPerCycle` caps one `DoShed` call and `ShedStep` runs every tick, so the cap was one
+   block per *second*. No settling interval.
+2. Reserve never improved between actions - the fast ring shows demand pinned at 71.7 MW and
+   `bout` at 12.0 MW throughout, because the charging jump drives absorbed every megawatt
+   freed. Four of the five sheds achieved nothing measurable.
+
+Also observed: `Jump Drive 9` is tier Discretionary and should sort **first** - and did in the
+earlier single-drive episode at 20:29:13. Here it went last. Suspected cause is `ShedOne`
+refusing it on a near-zero live `DetailedInfo` read and the loop silently falling through.
+**Instrumented in v0.1.12 rather than fixed by assumption.**
+
+Restoration behaved correctly and was not changed:
+`Restore held: Jump Drive 9 needs 32.0 MW, margin 18.1 MW` is the per-block fit check working.
+
+## B2r — RE-RUN ON v0.1.12
+
+Same setup: `AutoShed=true`, `MaxShedPerCycle=1`, `ShedSettleSeconds=5`, two empty jump drives.
+
+**First clear the shed state** from the failed run - `run "recover"` - so the episode starts
+with an empty list.
+
+Expected event sequence, which is the whole point of the change:
+
+    LOAD SHEDDING 1 item(s), X MW relieved
+      settling 5.0s before re-measuring
+    Deficit persists after settle: draining X, was Y at the last action
+    ... or ...
+    SHEDDING STOPPED - drain X below bar Y after N action(s)
+    Shed episode ended after N action(s), reserve X
+
+| # | Check | Expected |
+|---|---|---|
+| 1 | Actions are >= 5 s apart | timestamps in the event log |
+| 2 | Total blocks shed is far fewer than five | |
+| 3 | The ordering question is answered | `== CANDIDATES REFUSED ==` either names Jump Drive 9 with a near-zero live draw, or it does not and the cause is something else |
+| 4 | Post-settle decision is explicit | `Deficit persists` or `SHEDDING STOPPED` appears, not silence |
+| 5 | Shedding stops on improvement | once `bout` < bar, no further sheds **even though `Stressed` stays latched** |
+| 6 | Elastic load is visible | if the jump drives keep absorbing freed power, `drainNow` vs `atLastAction` shows it |
+| 7 | Protection held | B3 list still enabled |
+| 8 | Restoration unchanged | staged, per-block fit check still holds oversized items |
+
+If check 3 shows Jump Drive 9 refused for a near-zero live read while it was demonstrably
+drawing 32 MW, that is a **new defect in the fresh-read guard** and should be reported before
+any further shedding work - it would mean the guard is misreading a block class rather than
+protecting against idle machines.
+
 ## Results
 
 | Step | Pass/Fail | Notes |
