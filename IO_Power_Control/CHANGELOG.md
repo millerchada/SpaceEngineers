@@ -1,5 +1,74 @@
 # IO Power Control — changelog
 
+## v0.1.11 — the stored-decline leg is now scale-free (2026-09-19)
+
+**Detector change only.** The material-discharge threshold, the 10 s sustained hold, the
+v0.1.10 stress latch and 15 s recovery, and brownout behaviour are all unchanged. No actuator
+changes. No steam/H2 model.
+
+### The defect
+
+The third entry leg was expressed as a share of bank capacity:
+
+    required decline = StoredDeclinePercent/100 x MaxStored
+    time to qualify  = required / deficit
+
+      3 MWh bank, 4.71 MW deficit  ->  0.015 MWh  ->  ~11 s   (UAT measured 10.5 s)
+    300 MWh bank, 5.00 MW deficit  ->  1.500 MWh  ->  ~18 MINUTES
+
+A bigger battery does not make a deficit less real; it only makes the same deficit a smaller
+fraction of the bank. Tying the qualification to capacity made the detector arbitrarily slow on
+exactly the installations that matter most.
+
+### What the leg is actually for
+
+Rejecting the gross/net telemetry artefact - a bank reporting ~11 MW out against ~12 MW in is
+moving no net energy, so nothing falls. The honest test of that is not "a fixed share of the
+bank disappeared" but **"stored energy is falling consistently with the discharge we are
+measuring"**.
+
+### New qualification semantics
+
+    expected += battNetOut x dt              integrated over the entry window, MW x s -> MWh
+    actual    = storedAtWindowStart - storedNow
+    qualify  when sustained AND actual >= max(MinDeclineMWh, DeclineConsistency x expected)
+
+    DeclineConsistency  0.5      fraction of the integrated expected energy
+    MinDeclineMWh       0.002    absolute floor, an ENERGY not a share
+
+Both terms are scale-free. The ratio is deliberately loose: SE reports simultaneous gross
+charge and discharge, so demanding equality would fail on the very artefact this is meant to
+tolerate. The floor exists only to reject "stored did not move at all", and being absolute is
+what keeps it from reintroducing the scaling problem.
+
+`dt` comes from the accumulated clock rather than an assumed 1 Hz tick, and a gap longer than
+5 s - a recompile, a paused server - integrates **nothing** rather than inventing a slab of
+energy that was never measured.
+
+### Verified timings, computed rather than asserted
+
+| Case | v0.1.11 | previous rule |
+|---|---|---|
+| UAT: 4.71 MW into a 3 MWh bank | **10.0 s** | 11.5 s (measured 10.5 s) |
+| 5 MW into a **300 MWh** bank | **10.0 s** | **1080 s** |
+| 5 MW into a 3 MWh bank | 10.0 s | 10.8 s |
+| 0.5 MW, at the bar floor | 15.0 s (floor dominates) | 108 s |
+
+So behaviour on the test base is essentially unchanged - which matters, because the v0.1.10
+UAT evidence was gathered against it - while a large bank now qualifies on the same timescale
+instead of eighteen minutes later.
+
+The rejection case still works by construction: during the gross/net oscillation `actual` stays
+near zero while `expected` climbs, so the ratio is never met.
+
+### Config
+
+`StoredDeclinePercent` is **removed**, not left inert - a key that silently does nothing is
+worse than one that is gone. `DeclineConsistency` and `MinDeclineMWh` replace it. An existing
+Custom Data still carrying the old key is harmless; it is simply ignored.
+
+`scan` now prints `DeclineExpected`, `required` and the actual decline side by side.
+
 ## v0.1.10 — stress latch, and a brownout freshness guard (2026-09-19)
 
 Two defects from the full v0.1.9 Phase A UAT. Entry thresholds and all passing v0.1.9

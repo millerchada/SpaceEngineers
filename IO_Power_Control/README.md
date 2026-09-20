@@ -1,6 +1,6 @@
 # IO Power Control
 
-**IOPC v0.1.10** — power capacity, protection and automatic load shedding for Space Engineers,
+**IOPC v0.1.11** — power capacity, protection and automatic load shedding for Space Engineers,
 built against **Industrial Overhaul v1.7.7**.
 
 One script for both stations and ships. It answers four separate questions:
@@ -16,10 +16,10 @@ exceeding generation, and the whole base going down.
 
 ## Deploying
 
-    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.10.cs
-    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.10.cs
+    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.11.cs
+    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.11.cs
 
-Paste `IO_Power_Control_v0.1.10.min.cs` into a programmable block and recompile. The source is
+Paste `IO_Power_Control_v0.1.11.min.cs` into a programmable block and recompile. The source is
 ~81 k characters, which is under the PB's 100 k ceiling, but the artifact is what gets pasted
 — same as every other script in this repo.
 
@@ -307,7 +307,14 @@ qualifying signal: **sustained battery drain**, which must satisfy all three of
 
 * net discharge >= `max(BattStressMW, 2% of credible)` — default 0.5 MW,
 * held **continuously** for `StressHoldSeconds` (the timer restarts on any dip), and
-* stored energy actually fallen by >= `StoredDeclinePercent` of capacity over that interval.
+* stored energy actually fallen **consistently with the measured discharge**:
+  `actual >= max(MinDeclineMWh, DeclineConsistency x expected)`, where `expected` is the
+  discharge integrated over the window.
+
+That third leg is deliberately scale-free. Expressing it as a share of bank capacity — as it
+was until v0.1.11 — qualified in 11 s on a 3 MWh bank and **18 minutes** on a 300 MWh one for
+the same real deficit, because a bigger battery makes the same deficit a smaller fraction of
+the bank without making it any less real.
 
 Once stress is **established**, it latches. Exit is a different question from entry: the drain
 must fall below `BattRecoverFraction` x the entry bar and stay there for `StressRecoverSeconds`.

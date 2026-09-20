@@ -219,11 +219,13 @@ No known defects outstanding in the detection path.
 2. **One battery only.** Every battery figure has been exercised against a single 3 MWh /
    12 MW unit. The per-battery net clamping exists precisely for a mixed bank where one
    battery charges while another discharges, and that case is entirely untested.
-3. **The stored-decline term does not scale.** Detection latency is
-   `(StoredDeclinePercent/100 x MaxStored) / deficit`. On this 3 MWh bank at 4.71 MW that is
-   ~11 s, matching the measured 10.5 s. On a **300 MWh** bank at a 5 MW deficit it would be
-   **18 minutes**. See the recommendation below - this must be addressed before AutoShed is
-   armed on the production base, though it is harmless here.
+3. ~~**The stored-decline term does not scale.**~~ **FIXED in v0.1.11.** The leg was
+   `(StoredDeclinePercent/100 x MaxStored) / deficit` - ~11 s on this 3 MWh bank at 4.71 MW,
+   but **18 minutes** on a 300 MWh bank at 5 MW. Replaced with a scale-free consistency test:
+   the observed decline must reach `max(MinDeclineMWh, DeclineConsistency x expected)`, where
+   expected is the measured discharge integrated over the window. Computed timings: 10.0 s for
+   the UAT case (was 11.5 s), 10.0 s for a 300 MWh bank at 5 MW (was 1080 s).
+   **Needs re-verification in game** - see below.
 4. **Brownout freshness fires correctly** - unproven in the positive direction.
 5. Docking, Red Alert, ship role, restart-with-loads-shed: untouched.
 
@@ -233,7 +235,23 @@ The Ore Purifier is still in `SHED STATE` from the v0.1.5 false shed. It has now
 purpose as persistence evidence across four recompiles and should be cleared with
 `run "recover"` before any armed test, so the shed list starts empty.
 
-## Next run (v0.1.10)
+## Next run (v0.1.11) — re-verify the detector, still AutoShed=false
+
+The v0.1.10 evidence was gathered against the old third leg. The computed timing says the test
+base should behave identically (10.0 s vs a measured 10.5 s), but that is a calculation, not an
+observation, and the entry path has changed.
+
+Re-run the jump-drive overload once more and confirm:
+
+* entry still fires at roughly the same moment, ~10 s after the drain starts;
+* `DeclineExpected`, `required` and the actual decline are all visible in `scan` and move as
+  expected during the window;
+* the latch still holds through the varying deficit;
+* recovery still clears ~15 s after removal.
+
+Only then is the detector worth checkpointing as the basis for arming the actuator.
+
+## Superseded run notes (v0.1.10)
 
 `AutoShed=false` still. Re-run scenario 4 - install the jump drive again - and confirm:
 
