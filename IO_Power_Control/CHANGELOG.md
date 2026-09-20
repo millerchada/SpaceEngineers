@@ -1,5 +1,116 @@
 # IO Power Control — changelog
 
+## v0.1.17 — staged startup and discovery (2026-09-19)
+
+**Architectural. Caused by the first production deployment**, which terminated on its first
+execution with the hard 50,000-instruction error. Not an upgrade regression: the v0.1.16 audit
+cannot execute on the first tick, because `DoShed` is unreachable until `_stressed` is true and
+that needs 10 s of qualifying drain. The cause was pre-existing and scale-dependent.
+
+### What was unbounded
+
+Only `RefreshDetailChunk` was ever budget-aware - **one check in the entire script**.
+`Discover` walked every block in one invocation, and the first invocation stacked `Discover`,
+`RefreshDetailChunk`, `Measure`, `CollectScreens` and `Render` together.
+
+Two costs that fail at different times, so they are fixed separately:
+
+**The constructor** parsed 338 catalog entries, 88 hints and 8 policy rows, then ran `MyIni`
+over the whole Custom Data. That runs at **recompile, before `Main` exists**, so chunking
+discovery could never have rescued it. It now does nothing but set the update frequency and
+record what that cost. Tables, the `Storage` parse and the config parse are staged across the
+first ticks by `BootStep`, each bounded by the cooperative budget.
+
+**Discovery** is now a resumable state machine - `fetch -> grids -> constructs -> blocks ->
+publish` - building a **separate staging model** and publishing it by reference swap.
+
+### The invariant
+
+**Nothing outside `DiscoverStep` ever sees the staging lists.** The live model stays
+authoritative for the whole pass, so a rescan never exposes a half-built `_bi`; on a first start
+there is simply no model, and **both actuators refuse to run until one exists**. The status
+display says so rather than looking idle:
+
+    Power Control v0.1.17
+    DISCOVERING
+    stage blocks
+    blocks 1320/2650
+    model not published
+    NO ACTUATION
+
+`Measure` is deliberately **not** chunked: it produces one coherent electrical snapshot, and a
+snapshot assembled from two ticks is not a snapshot. Its cost is instrumented so that claim can
+be checked instead of assumed.
+
+`CollectScreens` is **gone** - an entire extra O(n) walk of every block after every discovery,
+doing one case-insensitive search each. Screens are now collected during the block pass and
+published by the same swap.
+
+### Classify: same outcomes, far fewer searches
+
+Up to **176 case-insensitive substring searches per unmatched block** was the multiplier.
+Now: lowercase once, then a **first-letter bitmask** rejects most of the 88 candidates with a
+single bit test, and survivors use an **ordinal** search. A needle can only occur in a haystack
+containing the needle's first letter, so the prefilter is exact.
+
+`HINTS` also becomes parallel arrays rather than a `Dictionary`. First-match-in-order wins
+exactly as before - but that is now *guaranteed* rather than inherited from dictionary
+enumeration happening to preserve insertion order. Several hints overlap (`press` is a substring
+of `compressor`), so which wins is a real decision that should not depend on hash layout.
+
+**Parity is asserted**: every one of the 88 hint keys, and 2000 modelled blocks, must classify
+identically to a reimplementation of the original algorithm.
+
+### Candidate construction respects the budget
+
+A **partial** candidate list is worse than none - the block it failed to reach might be the one
+that should have been shed, which is the exact defect class the audit exists to investigate. So
+the action is **abandoned and retried next tick**, and says so, rather than acting on a
+truncated list.
+
+`scan` no longer forces a synchronous full rediscovery. A diagnostic command must not be able to
+terminate the thing it is diagnosing; `rescan` queues a staged pass instead.
+
+### Runtime cost is now measured, not inferred
+
+    == RUNTIME COST ==
+    hard limit 50000  soft budget 30000 (60%)
+    constructor 412   last full tick 8134   PEAK TICK 19022
+    boot done   discovery idle   modelPublished=True   lastPhaseYieldedOnBudget=False
+    phase            last   peak   work
+    boot                0    980      4
+    discover            0  18455   1200
+    ...
+
+This is what settles constructor cost versus first-`Main` cost, which could not be distinguished
+from code alone.
+
+### Testing
+
+`tests/test_staged_discovery.py`, 16 assertions over **2000 blocks** under simulated
+instruction pressure: multiple ticks required, yielded on budget, never published early, live
+model untouched during a rescan, no duplicates, no blocks skipped, classification parity, and
+survival of blocks deleted mid-pass.
+
+`tests/test_shed_authorization.py` grows to 15, adding first-start safety: neither shedding nor
+restoration may act before a model is published.
+
+**One test bug found and fixed while writing them:** the block double implemented
+`IMyProgrammableBlock`, so `Classify` claimed every block as `Control` before reaching the hint
+path - and the parity assertion passed while comparing **nothing**. It now requires that it
+compared at least 1000 blocks. A test that passes by checking nothing is worse than no test.
+
+**What these cannot prove:** the local harness cannot reproduce Space Engineers' instruction
+counter. It proves the guards work. The 50,000 proof has to come from the in-game section above.
+
+### Custom Data ownership
+
+Power Control reads only `[PowerControl]` and `[PowerControl.Catalog]`, and owns only what it
+writes below its report marker. Any other section - `[Captured.*]`, `[BlueprintOverrides]` -
+is functionally ignored. It is **not** free, though: `MyIni.TryParse` parses the entire string,
+so retained debris costs instructions on every config parse. With the parse now staged out of
+the constructor that is no longer fatal, but a clean PB is still the right call for production.
+
 ## v0.1.16 — candidate audit (2026-09-19)
 
 **Diagnostic only.** No change to shed policy, eligibility, tiering, sorting, `Relief()`,

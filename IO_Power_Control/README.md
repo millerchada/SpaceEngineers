@@ -1,6 +1,6 @@
 # IO Power Control
 
-**IOPC v0.1.16** — power capacity, protection and automatic load shedding for Space Engineers,
+**IOPC v0.1.17** — power capacity, protection and automatic load shedding for Space Engineers,
 built against **Industrial Overhaul v1.7.7**.
 
 One script for both stations and ships. It answers four separate questions:
@@ -16,7 +16,9 @@ exceeding generation, and the whole base going down.
 
 ## Tests
 
-    python IO_Power_Control/tests/test_shed_authorization.py IO_Power_Control/IO_Power_Control_v0.1.16.cs
+    python IO_Power_Control/tests/test_staged_discovery.py IO_Power_Control/IO_Power_Control_v0.1.17.cs
+
+    python IO_Power_Control/tests/test_shed_authorization.py IO_Power_Control/IO_Power_Control_v0.1.17.cs
 
 Runs the script rather than only compiling it: the shed-authorisation assertions construct the
 state a live base would be in and call `ShedStep()` directly. Point it at an older version to
@@ -25,10 +27,10 @@ defect was established before it was fixed.
 
 ## Deploying
 
-    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.16.cs
-    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.16.cs
+    python tools/check_pb.py IO_Power_Control/IO_Power_Control_v0.1.17.cs
+    python tools/build_pb.py IO_Power_Control/IO_Power_Control_v0.1.17.cs
 
-Paste `IO_Power_Control_v0.1.16.min.cs` into a programmable block and recompile. The source is
+Paste `IO_Power_Control_v0.1.17.min.cs` into a programmable block and recompile. The source is
 ~81 k characters, which is under the PB's 100 k ceiling, but the artifact is what gets pasted
 — same as every other script in this repo.
 

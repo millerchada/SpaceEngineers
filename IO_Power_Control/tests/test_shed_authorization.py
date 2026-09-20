@@ -64,8 +64,17 @@ void TAssert(string name, bool ok, string detail) {
 
 // Build the minimum world ShedStep needs: one home construct and one sheddable production
 // block that is genuinely drawing power.
+// v0.1.17 stages initialisation, so nothing that reads _tier or the hint tables can run until
+// the boot completes. Driving it here also proves the staged boot terminates.
+void TBoot() {
+  int guard = 0;
+  while (_boot != B_DONE && guard++ < 10000) BootStep();
+  _modelReady = true;   // scenarios below test POST-publish behaviour
+}
+
 void TScenario(double reserve, bool stressed, int actions, double settleUntil,
                double now, double drain, double bar, int cond) {
+  TBoot();
   _shed.Clear(); _shedOrder.Clear(); _events.Clear();
   _cons.Clear();
   _cons.Add(new CON { Key = 1, Name = "Test", Home = true });
@@ -84,6 +93,7 @@ void TScenario(double reserve, bool stressed, int actions, double settleUntil,
 // Production block (tier Industrial, 4) that is actually drawing. ParseDetail on the jump
 // string yields cur=0 max=32, which is exactly the cached state the hypothesis needs.
 void TOrdering() {
+  TBoot();
   _shed.Clear(); _shedOrder.Clear(); _events.Clear();
   _cons.Clear();
   _cons.Add(new CON { Key = 1, Name = "Test", Home = true });
@@ -179,6 +189,28 @@ public int RunTests() {
   TAssert("AUDIT_does_not_write_back_to_block_state",
     _bi[0].CurIn == 0.0 && _bi[0].HasCur,
     "curIn=" + Fx(_bi[0].CurIn) + " hasCur=" + _bi[0].HasCur);
+
+  // ---- FIRST-START SAFETY. Until a complete model is published there is nothing to reason
+  // about, and both actuators must refuse. This is the assertion that would have caught a
+  // partially built model being treated as authoritative.
+  TScenario(2.0, true, 0, 0.0, 100.0, 5.00, 1.17, K_CRITICAL);
+  _modelReady = false;
+  ShedStep();
+  TAssert("STARTUP_no_shed_before_model_published", _shed.Count == 0,
+    "shed=" + _shed.Count + " (expected 0; drain qualifies but no model exists)");
+  _shedOrder.Add(99);
+  _shed[99] = new SHED { Id = 99, Kind = 0, Relief = 1.0, Name = "ghost" };
+  _reserve = 1000.0; _goodSince = 0.0; _lastRestore = -1e9; _now = 1000.0;
+  RestoreStep();
+  TAssert("STARTUP_no_restore_before_model_published", _shed.Count == 1,
+    "shed=" + _shed.Count + " (expected 1; restore must not run without a model)");
+  _modelReady = true;
+
+  // The staged boot must actually finish, and finish having built the tables the rest of the
+  // script indexes into. A boot that silently never completes would look like a quiet script.
+  TAssert("BOOT_completes_and_builds_tables",
+    _boot == B_DONE && _tier != null && _hintN > 0 && _builtin.Count > 300,
+    "boot=" + BN[_boot] + " hints=" + _hintN + " catalog=" + _builtin.Count);
 
   Console.WriteLine(_tRun + " run, " + _tFail + " failed");
   return _tFail;

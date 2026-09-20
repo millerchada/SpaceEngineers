@@ -334,7 +334,15 @@ namespace Sandbox.ModAPI.Ingame {
 
   public class MyGridProgramRuntimeInfo {
     public UpdateFrequency UpdateFrequency { get; set; }
-    public int CurrentInstructionCount { get { return 0; } }
+    // TEST SUPPORT. The local harness cannot reproduce Space Engineers' instruction counter,
+    // but it can simulate PRESSURE: with Step > 0 every read charges that many instructions,
+    // so a cooperative budget check trips after a bounded number of reads and a chunked loop
+    // can be observed yielding and resuming. Step defaults to 0, which is the old behaviour.
+    // This proves the GUARD works. It says nothing about the real cost - only the game can.
+    int _cur;
+    public int Step;
+    public void ResetCounter() { _cur = 0; }
+    public int CurrentInstructionCount { get { _cur += Step; return _cur; } }
     public int MaxInstructionCount { get { return 50000; } }
     public TimeSpan TimeSinceLastRun { get { return TimeSpan.Zero; } }
     public double LastRunTimeMs { get { return 0; } }
